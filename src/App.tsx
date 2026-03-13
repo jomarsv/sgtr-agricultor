@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
-type TelaKey = 'inicio' | 'problemas' | 'visitas' | 'locktec' | 'status' | 'perfil';
+type TelaKey = 'inicio' | 'problemas' | 'visitas' | 'locktec' | 'status' | 'perfil' | 'integracao';
 
 type Problema = {
   id: string;
+  beneficiarioId: string;
+  beneficiarioNome: string;
   titulo: string;
   categoria: string;
   descricao: string;
@@ -13,10 +15,14 @@ type Problema = {
   status: string;
   imagem?: string;
   nomeImagem?: string;
+  video?: string;
+  nomeVideo?: string;
 };
 
 type SolicitacaoVisita = {
   id: string;
+  beneficiarioId: string;
+  beneficiarioNome: string;
   motivo: string;
   dataPreferida: string;
   turno: string;
@@ -37,6 +43,7 @@ type OfertaLockTec = {
 };
 
 type PerfilAgricultor = {
+  beneficiarioId: string;
   nome: string;
   propriedade: string;
   comunidade: string;
@@ -46,9 +53,9 @@ type PerfilAgricultor = {
 };
 
 const STORAGE_KEYS = {
-  problemas: 'agricultor_problemas_v1',
-  visitas: 'agricultor_visitas_v1',
-  perfil: 'agricultor_perfil_v1'
+  problemas: 'agricultor_problemas_v2_integrado',
+  solicitacoes: 'agricultor_visitas_v2_integrado',
+  perfil: 'agricultor_perfil_v2_integrado'
 };
 
 const colors = {
@@ -73,12 +80,15 @@ const telas: { key: TelaKey; label: string }[] = [
   { key: 'visitas', label: 'Solicitar visita' },
   { key: 'locktec', label: 'LockTec' },
   { key: 'status', label: 'Acompanhamento' },
-  { key: 'perfil', label: 'Meu perfil' }
+  { key: 'perfil', label: 'Meu perfil' },
+  { key: 'integracao', label: 'Integração' }
 ];
 
 const seedProblemas: Problema[] = [
   {
     id: 'PRB-001',
+    beneficiarioId: 'BEN-001',
+    beneficiarioNome: 'Maria do Socorro',
     titulo: 'Baixa pressão na irrigação',
     categoria: 'Irrigação',
     descricao: 'A água está chegando fraca nos canteiros do fundo.',
@@ -89,14 +99,16 @@ const seedProblemas: Problema[] = [
   }
 ];
 
-const seedVisitas: SolicitacaoVisita[] = [
+const seedSolicitacoes: SolicitacaoVisita[] = [
   {
-    id: 'VIS-AGR-001',
+    id: 'SVC-001',
+    beneficiarioId: 'BEN-001',
+    beneficiarioNome: 'Maria do Socorro',
     motivo: 'Orientação para controle de pragas',
     dataPreferida: '18/03/2026',
     turno: 'Manhã',
     observacoes: 'Preferência por visita cedo por causa do manejo.',
-    status: 'Agendada',
+    status: 'Solicitada',
     dataSolicitacao: '13/03/2026 09:10'
   }
 ];
@@ -135,7 +147,8 @@ const seedLockTec: OfertaLockTec[] = [
 ];
 
 const seedPerfil: PerfilAgricultor = {
-  nome: 'Maria do Socorro Silva',
+  beneficiarioId: 'BEN-001',
+  nome: 'Maria do Socorro',
   propriedade: 'Sítio Esperança',
   comunidade: 'Povoado Esperança',
   municipio: 'Rosário - MA',
@@ -164,11 +177,7 @@ function Badge({ text, tone = 'default' }: { text: string; tone?: 'default' | 'w
     background = '#d6edd9';
     color = '#24522d';
   }
-  return (
-    <span style={{ display: 'inline-block', padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, background, color }}>
-      {text}
-    </span>
-  );
+  return <span style={{ display: 'inline-block', padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, background, color }}>{text}</span>;
 }
 
 function SectionTitle({ title, subtitle }: { title: string; subtitle: string }) {
@@ -236,6 +245,8 @@ export default function AgricultorApp() {
   const [msgProblema, setMsgProblema] = useState('');
   const [imagemProblema, setImagemProblema] = useState<string>('');
   const [nomeImagemProblema, setNomeImagemProblema] = useState('');
+  const [videoProblema, setVideoProblema] = useState<string>('');
+  const [nomeVideoProblema, setNomeVideoProblema] = useState('');
   const [msgVisita, setMsgVisita] = useState('');
   const [buscaLockTec, setBuscaLockTec] = useState('');
 
@@ -245,6 +256,13 @@ export default function AgricultorApp() {
     descricao: '',
     prioridade: 'Média',
     localizacao: ''
+  });
+
+  const [visitaForm, setVisitaForm] = useState({
+    motivo: '',
+    dataPreferida: '',
+    turno: 'Manhã',
+    observacoes: ''
   });
 
   function handleImagemProblema(event: React.ChangeEvent<HTMLInputElement>) {
@@ -265,16 +283,33 @@ export default function AgricultorApp() {
     setNomeImagemProblema('');
   }
 
-  const [visitaForm, setVisitaForm] = useState({
-    motivo: '',
-    dataPreferida: '',
-    turno: 'Manhã',
-    observacoes: ''
-  });
+  function handleVideoProblema(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const tamanhoMaximo = 15 * 1024 * 1024;
+    if (file.size > tamanhoMaximo) {
+      setMsgProblema('O vídeo precisa ter no máximo 15 MB para esta versão demonstrativa.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const resultado = typeof reader.result === 'string' ? reader.result : '';
+      setVideoProblema(resultado);
+      setNomeVideoProblema(file.name);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function removerVideoProblema() {
+    setVideoProblema('');
+    setNomeVideoProblema('');
+  }
 
   useEffect(() => {
     setProblemas(safeLoad(STORAGE_KEYS.problemas, seedProblemas));
-    setSolicitacoes(safeLoad(STORAGE_KEYS.visitas, seedVisitas));
+    setSolicitacoes(safeLoad(STORAGE_KEYS.solicitacoes, seedSolicitacoes));
     setPerfil(safeLoad(STORAGE_KEYS.perfil, seedPerfil));
   }, []);
 
@@ -283,7 +318,7 @@ export default function AgricultorApp() {
   }, [problemas]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.visitas, JSON.stringify(solicitacoes));
+    localStorage.setItem(STORAGE_KEYS.solicitacoes, JSON.stringify(solicitacoes));
   }, [solicitacoes]);
 
   useEffect(() => {
@@ -293,34 +328,41 @@ export default function AgricultorApp() {
   const ofertasFiltradas = useMemo(() => {
     const q = buscaLockTec.toLowerCase().trim();
     if (!q) return seedLockTec;
-    return seedLockTec.filter((item) =>
-      [item.nome, item.tipo, item.categoria, item.fornecedor, item.municipio, item.disponibilidade].join(' ').toLowerCase().includes(q)
-    );
+    return seedLockTec.filter((item) => [item.nome, item.tipo, item.categoria, item.fornecedor, item.municipio, item.disponibilidade].join(' ').toLowerCase().includes(q));
   }, [buscaLockTec]);
 
   const isMobile = typeof window !== 'undefined' ? window.innerWidth < 960 : false;
 
   function salvarProblema() {
-    if (!problemaForm.titulo || !problemaForm.descricao) {
-      setMsgProblema('Preencha ao menos título e descrição do problema.');
+    if (!problemaForm.titulo) {
+      setMsgProblema('Preencha ao menos o título do problema.');
+      return;
+    }
+    if (!problemaForm.descricao && !imagemProblema && !videoProblema) {
+      setMsgProblema('Envie uma descrição, uma imagem ou um vídeo curto do problema.');
       return;
     }
     const novo: Problema = {
       id: `PRB-${String(Date.now()).slice(-6)}`,
+      beneficiarioId: perfil.beneficiarioId,
+      beneficiarioNome: perfil.nome,
       titulo: problemaForm.titulo,
       categoria: problemaForm.categoria,
-      descricao: problemaForm.descricao,
+      descricao: problemaForm.descricao || 'Relato enviado por mídia anexada.',
       prioridade: problemaForm.prioridade,
       localizacao: problemaForm.localizacao || 'Não informada',
       data: new Date().toLocaleString('pt-BR'),
       status: 'Recebido',
       imagem: imagemProblema || undefined,
-      nomeImagem: nomeImagemProblema || undefined
+      nomeImagem: nomeImagemProblema || undefined,
+      video: videoProblema || undefined,
+      nomeVideo: nomeVideoProblema || undefined
     };
     setProblemas((prev) => [novo, ...prev]);
     setProblemaForm({ titulo: '', categoria: 'Irrigação', descricao: '', prioridade: 'Média', localizacao: '' });
     removerImagemProblema();
-    setMsgProblema('Problema enviado com sucesso.');
+    removerVideoProblema();
+    setMsgProblema('Problema enviado com sucesso ao sistema técnico.');
   }
 
   function solicitarVisita() {
@@ -330,6 +372,8 @@ export default function AgricultorApp() {
     }
     const nova: SolicitacaoVisita = {
       id: `SVC-${String(Date.now()).slice(-6)}`,
+      beneficiarioId: perfil.beneficiarioId,
+      beneficiarioNome: perfil.nome,
       motivo: visitaForm.motivo,
       dataPreferida: visitaForm.dataPreferida,
       turno: visitaForm.turno,
@@ -339,7 +383,7 @@ export default function AgricultorApp() {
     };
     setSolicitacoes((prev) => [nova, ...prev]);
     setVisitaForm({ motivo: '', dataPreferida: '', turno: 'Manhã', observacoes: '' });
-    setMsgVisita('Solicitação de visita enviada.');
+    setMsgVisita('Solicitação de visita enviada para a equipe técnica.');
   }
 
   return (
@@ -347,9 +391,7 @@ export default function AgricultorApp() {
       <div style={{ maxWidth: 1400, margin: '0 auto', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '290px 1fr', gap: 20 }}>
         <div style={{ background: colors.sidebar, color: '#fff', borderRadius: 28, padding: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-            <div style={{ width: 48, height: 48, borderRadius: 16, background: colors.sidebarSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>
-              🌾
-            </div>
+            <div style={{ width: 48, height: 48, borderRadius: 16, background: colors.sidebarSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>🌾</div>
             <div>
               <div style={{ fontSize: 20, fontWeight: 700 }}>MeuCampo Agricultor</div>
               <div style={{ fontSize: 13, color: '#d7e4d4' }}>Canal direto com assistência e serviços</div>
@@ -382,20 +424,11 @@ export default function AgricultorApp() {
           {active === 'inicio' && (
             <>
               <div style={cardStyle()}>
-                <SectionTitle title="App do agricultor" subtitle="Protótipo inicial para relatar problemas, pedir visitas e acessar serviços parceiros." />
+                <SectionTitle title="App do agricultor" subtitle="Protótipo separado do app técnico, preparado para comunicação por backend comum." />
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: 16 }}>
-                  <div style={cardStyle({ background: colors.chip, padding: 16 })}>
-                    <div style={{ fontSize: 13, color: colors.muted }}>Problemas relatados</div>
-                    <div style={{ fontSize: 28, fontWeight: 700, color: colors.text, marginTop: 8 }}>{problemas.length}</div>
-                  </div>
-                  <div style={cardStyle({ background: colors.chip, padding: 16 })}>
-                    <div style={{ fontSize: 13, color: colors.muted }}>Visitas solicitadas</div>
-                    <div style={{ fontSize: 28, fontWeight: 700, color: colors.text, marginTop: 8 }}>{solicitacoes.length}</div>
-                  </div>
-                  <div style={cardStyle({ background: colors.chip, padding: 16 })}>
-                    <div style={{ fontSize: 13, color: colors.muted }}>Ofertas LockTec</div>
-                    <div style={{ fontSize: 28, fontWeight: 700, color: colors.text, marginTop: 8 }}>{seedLockTec.length}</div>
-                  </div>
+                  <div style={cardStyle({ background: colors.chip, padding: 16 })}><div style={{ fontSize: 13, color: colors.muted }}>Problemas relatados</div><div style={{ fontSize: 28, fontWeight: 700, color: colors.text, marginTop: 8 }}>{problemas.length}</div></div>
+                  <div style={cardStyle({ background: colors.chip, padding: 16 })}><div style={{ fontSize: 13, color: colors.muted }}>Visitas solicitadas</div><div style={{ fontSize: 28, fontWeight: 700, color: colors.text, marginTop: 8 }}>{solicitacoes.length}</div></div>
+                  <div style={cardStyle({ background: colors.chip, padding: 16 })}><div style={{ fontSize: 13, color: colors.muted }}>Ofertas LockTec</div><div style={{ fontSize: 28, fontWeight: 700, color: colors.text, marginTop: 8 }}>{seedLockTec.length}</div></div>
                 </div>
               </div>
 
@@ -409,7 +442,7 @@ export default function AgricultorApp() {
                   </div>
                 </div>
                 <div style={cardStyle()}>
-                  <h3 style={{ marginTop: 0, color: colors.text }}>Última movimentação</h3>
+                  <h3 style={{ marginTop: 0, color: colors.text }}>Últimas movimentações</h3>
                   <div style={{ display: 'grid', gap: 12 }}>
                     {problemas.slice(0, 2).map((p) => (
                       <div key={p.id} style={{ background: colors.chip, padding: 14, borderRadius: 16 }}>
@@ -426,6 +459,14 @@ export default function AgricultorApp() {
                             />
                           </div>
                         )}
+                        {p.video && (
+                          <div style={{ marginTop: 10 }}>
+                            <video controls style={{ width: '100%', maxHeight: 170, borderRadius: 14, border: `1px solid ${colors.border}`, background: '#000' }}>
+                              <source src={p.video} />
+                              Seu navegador não suporta vídeo incorporado.
+                            </video>
+                          </div>
+                        )}
                         <div style={{ fontSize: 14, color: colors.muted, marginTop: 6 }}>{p.categoria} • {p.data}</div>
                       </div>
                     ))}
@@ -438,13 +479,13 @@ export default function AgricultorApp() {
           {active === 'problemas' && (
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 20 }}>
               <div style={cardStyle()}>
-                <SectionTitle title="Relatar problema" subtitle="Canal para informar falhas, pragas, irrigação, máquinas e outras demandas." />
+                <SectionTitle title="Relatar problema" subtitle="O problema fica salvo para ser lido pelo app técnico na mesma base compartilhada." />
                 <div style={{ display: 'grid', gap: 14 }}>
                   <Field label="Título do problema" value={problemaForm.titulo} onChange={(v) => setProblemaForm((p) => ({ ...p, titulo: v }))} placeholder="Ex.: Falha na irrigação" />
                   <Field label="Categoria" value={problemaForm.categoria} onChange={(v) => setProblemaForm((p) => ({ ...p, categoria: v }))} placeholder="Irrigação, praga, solo..." />
                   <Field label="Prioridade" value={problemaForm.prioridade} onChange={(v) => setProblemaForm((p) => ({ ...p, prioridade: v }))} placeholder="Baixa, Média, Alta" />
                   <Field label="Localização" value={problemaForm.localizacao} onChange={(v) => setProblemaForm((p) => ({ ...p, localizacao: v }))} placeholder="Talhão, horta, curral..." />
-                  <Area label="Descrição" value={problemaForm.descricao} onChange={(v) => setProblemaForm((p) => ({ ...p, descricao: v }))} placeholder="Descreva o problema com o máximo de detalhe possível." />
+                  <Area label="Descrição ou relato opcional" value={problemaForm.descricao} onChange={(v) => setProblemaForm((p) => ({ ...p, descricao: v }))} placeholder="Se preferir, escreva aqui. Também pode enviar imagem ou vídeo curto." />
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: colors.muted, marginBottom: 6 }}>Imagem do problema</div>
                     <input
@@ -455,11 +496,11 @@ export default function AgricultorApp() {
                     />
                     {nomeImagemProblema && (
                       <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
-                        <div style={{ fontSize: 13, color: colors.muted }}>Arquivo selecionado: {nomeImagemProblema}</div>
+                        <div style={{ fontSize: 13, color: colors.muted }}>Imagem selecionada: {nomeImagemProblema}</div>
                         {imagemProblema && (
                           <img
                             src={imagemProblema}
-                            alt="Pré-visualização do problema"
+                            alt="Pré-visualização da imagem do problema"
                             style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 16, border: `1px solid ${colors.border}` }}
                           />
                         )}
@@ -467,13 +508,32 @@ export default function AgricultorApp() {
                       </div>
                     )}
                   </div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: colors.muted, marginBottom: 6 }}>Vídeo curto do problema</div>
+                    <input
+                      type="file"
+                      accept="video/*"
+                      onChange={handleVideoProblema}
+                      style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${colors.border}`, borderRadius: 14, padding: '10px 12px', fontSize: 14, background: '#fff', color: colors.text }}
+                    />
+                    <div style={{ fontSize: 12, color: colors.muted, marginTop: 6 }}>Envie um vídeo curto, preferencialmente de até 15 MB, para facilitar o relato sem precisar escrever muito.</div>
+                    {nomeVideoProblema && (
+                      <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
+                        <div style={{ fontSize: 13, color: colors.muted }}>Vídeo selecionado: {nomeVideoProblema}</div>
+                        {videoProblema && (
+                          <video controls style={{ width: '100%', maxHeight: 260, borderRadius: 16, border: `1px solid ${colors.border}`, background: '#000' }}>
+                            <source src={videoProblema} />
+                            Seu navegador não suporta vídeo incorporado.
+                          </video>
+                        )}
+                        <ActionButton text="Remover vídeo" onClick={removerVideoProblema} secondary />
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div style={{ marginTop: 16 }}>
-                  <ActionButton text="Enviar problema" onClick={salvarProblema} />
-                </div>
+                <div style={{ marginTop: 16 }}><ActionButton text="Enviar problema" onClick={salvarProblema} /></div>
                 {msgProblema && <div style={{ marginTop: 12, color: '#166534', fontSize: 14 }}>{msgProblema}</div>}
               </div>
-
               <div style={cardStyle()}>
                 <h3 style={{ marginTop: 0, color: colors.text }}>Problemas enviados</h3>
                 <div style={{ display: 'grid', gap: 12 }}>
@@ -497,6 +557,15 @@ export default function AgricultorApp() {
                           {item.nomeImagem && <div style={{ fontSize: 12, color: colors.muted, marginTop: 6 }}>{item.nomeImagem}</div>}
                         </div>
                       )}
+                      {item.video && (
+                        <div style={{ marginTop: 12 }}>
+                          <video controls style={{ width: '100%', maxHeight: 260, borderRadius: 16, border: `1px solid ${colors.border}`, background: '#000' }}>
+                            <source src={item.video} />
+                            Seu navegador não suporta vídeo incorporado.
+                          </video>
+                          {item.nomeVideo && <div style={{ fontSize: 12, color: colors.muted, marginTop: 6 }}>{item.nomeVideo}</div>}
+                        </div>
+                      )}
                       <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         <Badge text={item.status} />
                         <Badge text={item.data} />
@@ -511,19 +580,16 @@ export default function AgricultorApp() {
           {active === 'visitas' && (
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 20 }}>
               <div style={cardStyle()}>
-                <SectionTitle title="Solicitar visita técnica" subtitle="Peça atendimento técnico e informe a melhor data para a propriedade." />
+                <SectionTitle title="Solicitar visita técnica" subtitle="A solicitação é enviada para a base que o app técnico vai consultar." />
                 <div style={{ display: 'grid', gap: 14 }}>
                   <Field label="Motivo da visita" value={visitaForm.motivo} onChange={(v) => setVisitaForm((p) => ({ ...p, motivo: v }))} placeholder="Ex.: controle de pragas, manejo, solo" />
                   <Field label="Data preferida" value={visitaForm.dataPreferida} onChange={(v) => setVisitaForm((p) => ({ ...p, dataPreferida: v }))} placeholder="DD/MM/AAAA" />
                   <Field label="Turno" value={visitaForm.turno} onChange={(v) => setVisitaForm((p) => ({ ...p, turno: v }))} placeholder="Manhã, Tarde, Noite" />
                   <Area label="Observações" value={visitaForm.observacoes} onChange={(v) => setVisitaForm((p) => ({ ...p, observacoes: v }))} placeholder="Informe detalhes úteis para a visita." />
                 </div>
-                <div style={{ marginTop: 16 }}>
-                  <ActionButton text="Enviar solicitação" onClick={solicitarVisita} />
-                </div>
+                <div style={{ marginTop: 16 }}><ActionButton text="Enviar solicitação" onClick={solicitarVisita} /></div>
                 {msgVisita && <div style={{ marginTop: 12, color: '#166534', fontSize: 14 }}>{msgVisita}</div>}
               </div>
-
               <div style={cardStyle()}>
                 <h3 style={{ marginTop: 0, color: colors.text }}>Solicitações de visita</h3>
                 <div style={{ display: 'grid', gap: 12 }}>
@@ -535,9 +601,7 @@ export default function AgricultorApp() {
                       </div>
                       <div style={{ fontSize: 14, color: colors.muted, marginTop: 8 }}>Data preferida: {item.dataPreferida} • {item.turno}</div>
                       <div style={{ fontSize: 14, color: colors.muted, marginTop: 8 }}>{item.observacoes}</div>
-                      <div style={{ marginTop: 10 }}>
-                        <Badge text={`Solicitada em ${item.dataSolicitacao}`} />
-                      </div>
+                      <div style={{ marginTop: 10 }}><Badge text={`Solicitada em ${item.dataSolicitacao}`} /></div>
                     </div>
                   ))}
                 </div>
@@ -547,7 +611,7 @@ export default function AgricultorApp() {
 
           {active === 'locktec' && (
             <div style={cardStyle()}>
-              <SectionTitle title="LockTec" subtitle="Acesso rápido a ofertas de locação e compra de tratores e implementos." />
+              <SectionTitle title="LockTec" subtitle="Vitrine inicial de locação e compra de equipamentos." />
               <div style={{ maxWidth: 420, marginBottom: 16 }}>
                 <Field label="Buscar equipamento" value={buscaLockTec} onChange={setBuscaLockTec} placeholder="Trator, grade, roçadeira..." />
               </div>
@@ -564,9 +628,7 @@ export default function AgricultorApp() {
                     <div style={{ marginTop: 12, fontSize: 22, fontWeight: 700, color: colors.primary }}>{item.preco}</div>
                     <div style={{ marginTop: 8, fontSize: 14, color: colors.muted }}>Fornecedor: {item.fornecedor}</div>
                     <div style={{ marginTop: 8 }}><Badge text={item.disponibilidade} /></div>
-                    <div style={{ marginTop: 16 }}>
-                      <ActionButton text={item.tipo === 'Locação' ? 'Quero alugar' : 'Quero comprar'} secondary />
-                    </div>
+                    <div style={{ marginTop: 16 }}><ActionButton text={item.tipo === 'Locação' ? 'Quero alugar' : 'Quero comprar'} secondary /></div>
                   </div>
                 ))}
               </div>
@@ -593,12 +655,19 @@ export default function AgricultorApp() {
                           />
                         </div>
                       )}
+                      {item.video && (
+                        <div style={{ marginTop: 10 }}>
+                          <video controls style={{ width: '100%', maxHeight: 170, borderRadius: 14, border: `1px solid ${colors.border}`, background: '#000' }}>
+                            <source src={item.video} />
+                            Seu navegador não suporta vídeo incorporado.
+                          </video>
+                        </div>
+                      )}
                       <div style={{ marginTop: 8, color: colors.muted, fontSize: 14 }}>{item.categoria} • {item.data}</div>
                     </div>
                   ))}
                 </div>
               </div>
-
               <div style={cardStyle()}>
                 <h3 style={{ marginTop: 0, color: colors.text }}>Agenda de visitas</h3>
                 <div style={{ display: 'grid', gap: 12 }}>
@@ -619,7 +688,7 @@ export default function AgricultorApp() {
           {active === 'perfil' && (
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 20 }}>
               <div style={cardStyle()}>
-                <SectionTitle title="Meu perfil" subtitle="Dados básicos do agricultor e da propriedade vinculada." />
+                <SectionTitle title="Meu perfil" subtitle="Dados do agricultor e da propriedade vinculada." />
                 <div style={{ display: 'grid', gap: 14 }}>
                   <Field label="Nome" value={perfil.nome} onChange={(v) => setPerfil((p) => ({ ...p, nome: v }))} placeholder="Nome completo" />
                   <Field label="Propriedade" value={perfil.propriedade} onChange={(v) => setPerfil((p) => ({ ...p, propriedade: v }))} placeholder="Nome da propriedade" />
@@ -632,22 +701,34 @@ export default function AgricultorApp() {
               <div style={cardStyle()}>
                 <h3 style={{ marginTop: 0, color: colors.text }}>Resumo da unidade produtiva</h3>
                 <div style={{ display: 'grid', gap: 12 }}>
-                  <div style={{ background: colors.chip, padding: 16, borderRadius: 16 }}>
-                    <div style={{ fontSize: 13, color: colors.muted }}>Agricultor</div>
-                    <div style={{ marginTop: 6, fontWeight: 700, color: colors.text }}>{perfil.nome}</div>
-                  </div>
-                  <div style={{ background: colors.chip, padding: 16, borderRadius: 16 }}>
-                    <div style={{ fontSize: 13, color: colors.muted }}>Propriedade</div>
-                    <div style={{ marginTop: 6, fontWeight: 700, color: colors.text }}>{perfil.propriedade}</div>
-                  </div>
-                  <div style={{ background: colors.chip, padding: 16, borderRadius: 16 }}>
-                    <div style={{ fontSize: 13, color: colors.muted }}>Localização</div>
-                    <div style={{ marginTop: 6, fontWeight: 700, color: colors.text }}>{perfil.comunidade} • {perfil.municipio}</div>
-                  </div>
-                  <div style={{ background: colors.chip, padding: 16, borderRadius: 16 }}>
-                    <div style={{ fontSize: 13, color: colors.muted }}>Atividades</div>
-                    <div style={{ marginTop: 6, fontWeight: 700, color: colors.text }}>{perfil.atividades}</div>
-                  </div>
+                  <div style={{ background: colors.chip, padding: 16, borderRadius: 16 }}><div style={{ fontSize: 13, color: colors.muted }}>Agricultor</div><div style={{ marginTop: 6, fontWeight: 700, color: colors.text }}>{perfil.nome}</div></div>
+                  <div style={{ background: colors.chip, padding: 16, borderRadius: 16 }}><div style={{ fontSize: 13, color: colors.muted }}>Propriedade</div><div style={{ marginTop: 6, fontWeight: 700, color: colors.text }}>{perfil.propriedade}</div></div>
+                  <div style={{ background: colors.chip, padding: 16, borderRadius: 16 }}><div style={{ fontSize: 13, color: colors.muted }}>Localização</div><div style={{ marginTop: 6, fontWeight: 700, color: colors.text }}>{perfil.comunidade} • {perfil.municipio}</div></div>
+                  <div style={{ background: colors.chip, padding: 16, borderRadius: 16 }}><div style={{ fontSize: 13, color: colors.muted }}>Atividades</div><div style={{ marginTop: 6, fontWeight: 700, color: colors.text }}>{perfil.atividades}</div></div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {active === 'integracao' && (
+            <div style={cardStyle()}>
+              <SectionTitle title="Modelo de integração com o app técnico" subtitle="Este app foi separado e já está preparado para conversar com a mesma base do app técnico." />
+              <div style={{ display: 'grid', gap: 14 }}>
+                <div style={{ background: colors.chip, padding: 16, borderRadius: 16 }}>
+                  <strong style={{ color: colors.text }}>1. Problemas relatados</strong>
+                  <div style={{ marginTop: 8, color: colors.muted }}>Cada problema salvo aqui fica na coleção/tabela compartilhada de problemas. O app técnico consulta essa mesma base para montar a fila de atendimento.</div>
+                </div>
+                <div style={{ background: colors.chip, padding: 16, borderRadius: 16 }}>
+                  <strong style={{ color: colors.text }}>2. Solicitações de visita</strong>
+                  <div style={{ marginTop: 8, color: colors.muted }}>Cada solicitação enviada aqui entra na fila de visitas para o técnico visualizar, aprovar, reagendar ou concluir.</div>
+                </div>
+                <div style={{ background: colors.chip, padding: 16, borderRadius: 16 }}>
+                  <strong style={{ color: colors.text }}>3. Identificador comum</strong>
+                  <div style={{ marginTop: 8, color: colors.muted }}>O vínculo entre os dois apps é o campo <code>beneficiarioId</code>. Assim, o agricultor e o cadastro técnico apontam para a mesma unidade produtiva.</div>
+                </div>
+                <div style={{ background: colors.chip, padding: 16, borderRadius: 16 }}>
+                  <strong style={{ color: colors.text }}>4. Próxima camada</strong>
+                  <div style={{ marginTop: 8, color: colors.muted }}>Trocar o localStorage por um backend comum, como Firebase ou Supabase, para sincronização real entre os dois apps.</div>
                 </div>
               </div>
             </div>

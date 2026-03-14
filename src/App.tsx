@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 type TelaKey = 'inicio' | 'problemas' | 'visitas' | 'locktec' | 'status' | 'perfil';
 
@@ -242,6 +242,8 @@ export default function AgricultorApp() {
   const [nomeVideoProblema, setNomeVideoProblema] = useState('');
   const [msgVisita, setMsgVisita] = useState('');
   const [buscaLockTec, setBuscaLockTec] = useState('');
+  const videoCameraInputRef = useRef<HTMLInputElement | null>(null);
+  const videoGalleryInputRef = useRef<HTMLInputElement | null>(null);
 
   const [problemaForm, setProblemaForm] = useState({
     titulo: '',
@@ -291,6 +293,16 @@ export default function AgricultorApp() {
   function removerVideoProblema() {
     setVideoProblema('');
     setNomeVideoProblema('');
+    if (videoCameraInputRef.current) videoCameraInputRef.current.value = '';
+    if (videoGalleryInputRef.current) videoGalleryInputRef.current.value = '';
+  }
+
+  function abrirCameraVideo() {
+    videoCameraInputRef.current?.click();
+  }
+
+  function escolherVideoSalvo() {
+    videoGalleryInputRef.current?.click();
   }
 
   const [visitaForm, setVisitaForm] = useState({
@@ -513,14 +525,35 @@ export default function AgricultorApp() {
                 </div>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: colors.muted, marginBottom: 6 }}>Vídeo curto do problema</div>
-                    <input
-                      type="file"
-                      accept="video/*"
-                      capture="environment"
-                      onChange={handleVideoProblema}
-                      style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${colors.border}`, borderRadius: 14, padding: '10px 12px', fontSize: 14, background: '#fff', color: colors.text }}
-                    />
-                    <div style={{ fontSize: 12, color: colors.muted, marginTop: 6 }}>No celular, esse botão tende a abrir a câmera para gravar o vídeo direto no app. Prefira vídeos curtos.</div>
+                    <div style={{ background: colors.chip, borderRadius: 18, padding: 14, display: 'grid', gap: 12 }}>
+                      <div style={{ fontSize: 14, color: colors.text, fontWeight: 700 }}>Grave direto pelo app no celular</div>
+                      <div style={{ fontSize: 12, color: colors.muted }}>No celular, o botão abaixo tenta abrir a câmera traseira para gravar o vídeo na hora. Se não funcionar no navegador, use a opção de escolher um vídeo já salvo.</div>
+
+                      <input
+                        ref={videoCameraInputRef}
+                        type="file"
+                        accept="video/*"
+                        capture="environment"
+                        onChange={handleVideoProblema}
+                        style={{ display: 'none' }}
+                      />
+
+                      <input
+                        ref={videoGalleryInputRef}
+                        type="file"
+                        accept="video/*"
+                        onChange={handleVideoProblema}
+                        style={{ display: 'none' }}
+                      />
+
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 10 }}>
+                        <ActionButton text="Gravar vídeo agora" onClick={abrirCameraVideo} />
+                        <ActionButton text="Escolher vídeo salvo" onClick={escolherVideoSalvo} secondary />
+                      </div>
+
+                      <div style={{ fontSize: 12, color: colors.muted }}>Prefira vídeos curtos, de poucos segundos, para facilitar o envio.</div>
+                    </div>
+
                     {nomeVideoProblema && (
                       <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
                         <div style={{ fontSize: 13, color: colors.muted }}>Vídeo selecionado: {nomeVideoProblema}</div>

@@ -212,10 +212,10 @@ export default function App() {
         setFirebaseStatus('conectando');
         setFirebaseMsg('Conectado. Iniciando sincronização em tempo real...');
         startRealtime();
-      } catch (error) {
+      } catch (error: any) {
         console.error(error);
         setFirebaseStatus('erro');
-        setFirebaseMsg('Erro de autenticação no Firebase.');
+        setFirebaseMsg(`Erro Firebase: ${error?.code || 'desconhecido'} - ${error?.message || ''}`);
       }
     });
 

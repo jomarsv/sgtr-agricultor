@@ -7,7 +7,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyCSK8POTwUNM9FegMH9N9280HhrhRz6cJU",
   authDomain: "sgtr-plataforma.firebaseapp.com",
   projectId: "sgtr-plataforma",
-  storageBucket: "sgtr-plataforma.firebasestorage.app",
+  storageBucket: "sgtr-plataforma.appspot.com",
   messagingSenderId: "883612105941",
   appId: "1:883612105941:web:6061d320adf00ed7c8365c"
 };

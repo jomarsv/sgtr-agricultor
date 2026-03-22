@@ -410,7 +410,7 @@ export default function App() {
           <div style={{ background: colors.sidebarSoft, borderRadius: 22, padding: 16, marginTop: 18 }}>
             <div style={{ fontSize: 13, color: '#d7e4d4', marginBottom: 8 }}>IA do Agro</div>
             <div style={{ fontSize: 18, fontWeight: 700, color: '#ffffff' }}>JARILO</div>
-            <div style={{ fontSize: 13, color: '#d7e4d4', marginTop: 6 }}>acesso direto à SGTR</div>
+            <div style={{ fontSize: 13, color: '#d7e4d4', marginTop: 6 }}>acesso direto à comunidade SGTR</div>
             <a
               href={JARILO_URL}
               target="_blank"

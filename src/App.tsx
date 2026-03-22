@@ -31,6 +31,8 @@ type SolicitacaoVisita = {
   dataSolicitacao: string;
 };
 
+const JARILO_URL = 'https://www.jarilo.com.br/questions/question/3d1a5e16-c489-4819-925e-89e45c32425c/details';
+
 const colors = {
   bg: '#eef4ea',
   sidebar: '#1f4d2b',
@@ -403,6 +405,30 @@ export default function App() {
                 </button>
               );
             })}
+          </div>
+
+          <div style={{ background: colors.sidebarSoft, borderRadius: 22, padding: 16, marginTop: 18 }}>
+            <div style={{ fontSize: 13, color: '#d7e4d4', marginBottom: 8 }}>IA do Agro</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: '#ffffff' }}>JARILO</div>
+            <div style={{ fontSize: 13, color: '#d7e4d4', marginTop: 6 }}>acesso direto à SGTR</div>
+            <a
+              href={JARILO_URL}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: 'block',
+                textAlign: 'center',
+                textDecoration: 'none',
+                marginTop: 14,
+                padding: '12px 14px',
+                borderRadius: 14,
+                background: '#ffffff',
+                color: colors.primaryDark,
+                fontWeight: 700
+              }}
+            >
+              Abrir JARILO
+            </a>
           </div>
         </div>
 

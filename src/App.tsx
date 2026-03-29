@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { addDoc, collection, onSnapshot, serverTimestamp } from 'firebase/firestore';
-import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
+import { addDoc, collection, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth, db } from './firebase';
 import { uploadArquivo } from './services/upload';
 
@@ -15,6 +15,9 @@ type Problema = {
   localizacao: string;
   data: string;
   status: string;
+  beneficiarioId?: string;
+  beneficiarioNome?: string;
+  uidCriador?: string;
   imagem?: string;
   nomeImagem?: string;
   video?: string;
@@ -29,6 +32,21 @@ type SolicitacaoVisita = {
   observacoes: string;
   status: string;
   dataSolicitacao: string;
+  beneficiarioId?: string;
+  beneficiarioNome?: string;
+  uidCriador?: string;
+};
+
+type UsuarioAgricultor = {
+  uid: string;
+  nome: string;
+  perfil: 'agricultor';
+  cpf?: string;
+  cpfMasked?: string;
+  beneficiarioId?: string;
+  macroRegiaoId?: string;
+  ativo: boolean;
+  ultimoLoginEm?: any;
 };
 
 const JARILO_URL = 'https://www.jarilo.com.br/questions/question/3d1a5e16-c489-4819-925e-89e45c32425c/details';
@@ -134,12 +152,30 @@ function ProblemVideo({ src, fileName }: { src?: string; fileName?: string }) {
   );
 }
 
+function formatarCpf(valor: string) {
+  const numeros = valor.replace(/\D/g, '').slice(0, 11);
+  if (!numeros) return '';
+  if (numeros.length <= 3) return numeros;
+  if (numeros.length <= 6) return `${numeros.slice(0, 3)}.${numeros.slice(3)}`;
+  if (numeros.length <= 9) return `${numeros.slice(0, 3)}.${numeros.slice(3, 6)}.${numeros.slice(6)}`;
+  return `${numeros.slice(0, 3)}.${numeros.slice(3, 6)}.${numeros.slice(6, 9)}-${numeros.slice(9)}`;
+}
+
+function cpfParaEmailInterno(cpfFormatado: string) {
+  const numeros = cpfFormatado.replace(/\D/g, '');
+  return `${numeros}@sgtr.app`;
+}
+
 export default function App() {
   const [active, setActive] = useState<TelaKey>('visitas');
+  const [usuarioSistema, setUsuarioSistema] = useState<UsuarioAgricultor | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [loginForm, setLoginForm] = useState({ cpf: '', senha: '' });
+  const [loginMsg, setLoginMsg] = useState('');
   const [problemas, setProblemas] = useState<Problema[]>([]);
   const [solicitacoes, setSolicitacoes] = useState<SolicitacaoVisita[]>([]);
   const [firebaseStatus, setFirebaseStatus] = useState<'conectando' | 'online' | 'erro'>('conectando');
-  const [firebaseMsg, setFirebaseMsg] = useState('Autenticando e conectando ao Firebase...');
+  const [firebaseMsg, setFirebaseMsg] = useState('Faça login com CPF e senha para acessar o app.');
   const [msgProblema, setMsgProblema] = useState('');
   const [msgVisita, setMsgVisita] = useState('');
 
@@ -171,11 +207,13 @@ export default function App() {
     let unsubProblemas: (() => void) | undefined;
     let unsubSolicitacoes: (() => void) | undefined;
 
-    const startRealtime = () => {
+    const startRealtime = (beneficiarioId: string) => {
       unsubProblemas = onSnapshot(
         collection(db, 'problemas_agricultor'),
         (snapshot) => {
-          const lista = snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as Problema));
+          const lista = snapshot.docs
+            .map((item) => ({ id: item.id, ...item.data() } as Problema))
+            .filter((item) => item.beneficiarioId === beneficiarioId);
           setProblemas(lista.sort((a, b) => String(b.data || '').localeCompare(String(a.data || ''))));
           setFirebaseStatus('online');
           setFirebaseMsg('Problemas sincronizados em tempo real com o Firestore.');
@@ -190,7 +228,9 @@ export default function App() {
       unsubSolicitacoes = onSnapshot(
         collection(db, 'solicitacoes_visita'),
         (snapshot) => {
-          const lista = snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as SolicitacaoVisita));
+          const lista = snapshot.docs
+            .map((item) => ({ id: item.id, ...item.data() } as SolicitacaoVisita))
+            .filter((item) => item.beneficiarioId === beneficiarioId);
           setSolicitacoes(lista.sort((a, b) => String(b.dataSolicitacao || '').localeCompare(String(a.dataSolicitacao || ''))));
           setFirebaseStatus('online');
           setFirebaseMsg('Solicitações de visita sincronizadas em tempo real com o Firestore.');
@@ -204,20 +244,88 @@ export default function App() {
     };
 
     const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      unsubProblemas?.();
+      unsubSolicitacoes?.();
+
+      if (!user) {
+        setUsuarioSistema(null);
+        setProblemas([]);
+        setSolicitacoes([]);
+        setAuthLoading(false);
+        setFirebaseStatus('conectando');
+        setFirebaseMsg('Faça login com CPF e senha para acessar o app.');
+        return;
+      }
+
       try {
-        if (!user) {
-          setFirebaseStatus('conectando');
-          setFirebaseMsg('Autenticando no Firebase...');
-          await signInAnonymously(auth);
+        setAuthLoading(true);
+        const userRef = doc(db, 'usuarios', user.uid);
+        const userSnap = await getDoc(userRef);
+
+        if (!userSnap.exists()) {
+          await signOut(auth);
+          setLoginMsg('Usuário autenticado, mas não encontrado na base do sistema.');
+          setFirebaseStatus('erro');
+          setFirebaseMsg('Cadastro do usuário não encontrado.');
           return;
         }
+
+        const userData = { uid: user.uid, ...userSnap.data() } as UsuarioAgricultor;
+
+        if (!userData.ativo) {
+          await signOut(auth);
+          setLoginMsg('Seu acesso está inativo no sistema.');
+          setFirebaseStatus('erro');
+          setFirebaseMsg('Usuário inativo.');
+          return;
+        }
+
+        if (userData.perfil !== 'agricultor') {
+          await signOut(auth);
+          setLoginMsg('Este acesso não pertence ao app agricultor.');
+          setFirebaseStatus('erro');
+          setFirebaseMsg('Perfil inválido para este app.');
+          return;
+        }
+
+        if (!userData.beneficiarioId) {
+          await signOut(auth);
+          setLoginMsg('Seu cadastro ainda não está vinculado a um beneficiário.');
+          setFirebaseStatus('erro');
+          setFirebaseMsg('Beneficiário não vinculado ao usuário.');
+          return;
+        }
+
+        setUsuarioSistema(userData);
         setFirebaseStatus('conectando');
         setFirebaseMsg('Conectado. Iniciando sincronização em tempo real...');
-        startRealtime();
+
+        await addDoc(collection(db, 'access_logs'), {
+          uid: userData.uid,
+          nome: userData.nome,
+          perfil: userData.perfil,
+          macroRegiaoId: userData.macroRegiaoId || null,
+          tecnicoId: null,
+          beneficiarioId: userData.beneficiarioId,
+          appOrigem: 'app-agricultor',
+          evento: 'login',
+          timestamp: serverTimestamp()
+        });
+
+        await setDoc(doc(db, 'usuarios', userData.uid), { ultimoLoginEm: serverTimestamp() }, { merge: true });
+
+        startRealtime(userData.beneficiarioId);
+        setLoginMsg('');
       } catch (error: any) {
         console.error(error);
+        setUsuarioSistema(null);
+        setProblemas([]);
+        setSolicitacoes([]);
         setFirebaseStatus('erro');
         setFirebaseMsg(`Erro Firebase: ${error?.code || 'desconhecido'} - ${error?.message || ''}`);
+        setLoginMsg(error?.message || 'Falha ao iniciar sessão.');
+      } finally {
+        setAuthLoading(false);
       }
     });
 
@@ -227,6 +335,38 @@ export default function App() {
       unsubSolicitacoes?.();
     };
   }, []);
+
+  async function realizarLogin() {
+    const cpfLimpo = loginForm.cpf.replace(/\D/g, '');
+
+    if (cpfLimpo.length !== 11 || !loginForm.senha) {
+      setLoginMsg('Informe CPF e senha para entrar.');
+      return;
+    }
+
+    try {
+      setAuthLoading(true);
+      setLoginMsg('Validando acesso...');
+      await signInWithEmailAndPassword(auth, cpfParaEmailInterno(loginForm.cpf), loginForm.senha);
+      setLoginMsg('');
+    } catch (error) {
+      console.error(error);
+      setLoginMsg('Não foi possível entrar. Verifique CPF e senha.');
+      setAuthLoading(false);
+    }
+  }
+
+  async function sairDoSistema() {
+    try {
+      await signOut(auth);
+      setUsuarioSistema(null);
+      setLoginForm({ cpf: '', senha: '' });
+      setLoginMsg('Sessão encerrada com sucesso.');
+    } catch (error) {
+      console.error(error);
+      setLoginMsg('Erro ao sair do sistema.');
+    }
+  }
 
   function handleImagemProblema(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -283,6 +423,11 @@ export default function App() {
       return;
     }
 
+    if (!usuarioSistema?.beneficiarioId) {
+      setMsgProblema('Seu cadastro ainda não está vinculado corretamente. Procure a equipe da SAF.');
+      return;
+    }
+
     try {
       let imagemURL = '';
       let videoURL = '';
@@ -300,8 +445,9 @@ export default function App() {
       }
 
       await addDoc(collection(db, 'problemas_agricultor'), {
-        beneficiarioId: 'BEN-001',
-        beneficiarioNome: 'Maria do Socorro Silva',
+        beneficiarioId: usuarioSistema.beneficiarioId,
+        beneficiarioNome: usuarioSistema.nome,
+        uidCriador: usuarioSistema.uid,
         titulo: problemaForm.titulo,
         categoria: problemaForm.categoria,
         descricao: problemaForm.descricao || 'Relato enviado por mídia anexada.',
@@ -330,10 +476,16 @@ export default function App() {
       return;
     }
 
+    if (!usuarioSistema?.beneficiarioId) {
+      setMsgVisita('Seu cadastro ainda não está vinculado corretamente. Procure a equipe da SAF.');
+      return;
+    }
+
     try {
       await addDoc(collection(db, 'solicitacoes_visita'), {
-        beneficiarioId: 'BEN-001',
-        beneficiarioNome: 'Maria do Socorro Silva',
+        beneficiarioId: usuarioSistema.beneficiarioId,
+        beneficiarioNome: usuarioSistema.nome,
+        uidCriador: usuarioSistema.uid,
         motivo: visitaForm.motivo,
         dataPreferida: visitaForm.dataPreferida,
         turno: visitaForm.turno,
@@ -353,6 +505,45 @@ export default function App() {
 
   const ultimosProblemas = useMemo(() => problemas.slice(0, 3), [problemas]);
   const ultimasSolicitacoes = useMemo(() => solicitacoes.slice(0, 5), [solicitacoes]);
+
+  if (authLoading && !usuarioSistema) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.bg, padding: 20, fontFamily: 'Arial, Helvetica, sans-serif' }}>
+        <div style={{ ...cardStyle({ width: 'min(460px, 100%)', textAlign: 'center' }) }}>
+          <div style={{ fontSize: 26, fontWeight: 700, color: colors.text }}>MeuCampo Agricultor</div>
+          <div style={{ fontSize: 14, color: colors.muted, marginTop: 10 }}>Validando acesso ao sistema...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!usuarioSistema) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.bg, padding: 20, fontFamily: 'Arial, Helvetica, sans-serif' }}>
+        <div style={{ ...cardStyle({ width: 'min(520px, 100%)' }) }}>
+          <div style={{ textAlign: 'center', marginBottom: 22 }}>
+            <div style={{ fontSize: 28, fontWeight: 700, color: colors.text }}>MeuCampo Agricultor</div>
+            <div style={{ fontSize: 14, color: colors.muted, marginTop: 8 }}>Entre com seu CPF e sua senha para acessar seu atendimento.</div>
+          </div>
+
+          <div style={{ display: 'grid', gap: 14 }}>
+            <Input label="CPF" value={loginForm.cpf} onChange={(v) => setLoginForm((prev) => ({ ...prev, cpf: formatarCpf(v) }))} placeholder="000.000.000-00" />
+            <Input label="Senha" value={loginForm.senha} onChange={(v) => setLoginForm((prev) => ({ ...prev, senha: v }))} placeholder="Digite sua senha" type="password" />
+            <ActionButton text={authLoading ? 'Entrando...' : 'Entrar'} onClick={realizarLogin} />
+          </div>
+
+          <div style={{ marginTop: 16, background: colors.chip, borderRadius: 16, padding: 14 }}>
+            <div style={{ fontSize: 13, color: colors.muted }}>Quem pode entrar aqui</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+              <Badge text="Agricultor" tone="success" />
+            </div>
+          </div>
+
+          {loginMsg && <div style={{ marginTop: 14, fontSize: 14, color: loginMsg.toLowerCase().includes('sucesso') ? '#166534' : '#8b1e1e' }}>{loginMsg}</div>}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: colors.bg, padding: 16, fontFamily: 'Arial, Helvetica, sans-serif', boxSizing: 'border-box' }}>
@@ -380,9 +571,10 @@ export default function App() {
           </div>
 
           <div style={{ background: colors.sidebarSoft, borderRadius: 22, padding: 16, marginBottom: 18 }}>
-            <div style={{ fontSize: 13, color: '#d7e4d4', marginBottom: 8 }}>Propriedade vinculada</div>
-            <div style={{ fontSize: 20, fontWeight: 700 }}>Sítio Esperança</div>
-            <div style={{ fontSize: 14, color: '#d7e4d4', marginTop: 6 }}>Povoado Esperança • Rosário - MA</div>
+            <div style={{ fontSize: 13, color: '#d7e4d4', marginBottom: 8 }}>Produtor vinculado</div>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>{usuarioSistema.nome}</div>
+            <div style={{ fontSize: 14, color: '#d7e4d4', marginTop: 6 }}>{usuarioSistema.cpfMasked || formatarCpf(usuarioSistema.cpf || '')}</div>
+            {usuarioSistema.beneficiarioId && <div style={{ fontSize: 13, color: '#d7e4d4', marginTop: 6 }}>Cadastro: {usuarioSistema.beneficiarioId}</div>}
           </div>
 
           <div style={{ display: 'grid', gap: 8 }}>
@@ -405,6 +597,12 @@ export default function App() {
                 </button>
               );
             })}
+          </div>
+
+          <div style={{ background: colors.sidebarSoft, borderRadius: 22, padding: 16, marginTop: 18 }}>
+            <div style={{ fontSize: 13, color: '#d7e4d4', marginBottom: 8 }}>Sessão</div>
+            <div style={{ fontSize: 14, color: '#d7e4d4', marginBottom: 12 }}>Logado como <strong>{usuarioSistema.nome}</strong></div>
+            <ActionButton text="Sair" onClick={sairDoSistema} secondary />
           </div>
 
           <div style={{ background: colors.sidebarSoft, borderRadius: 22, padding: 16, marginTop: 18 }}>

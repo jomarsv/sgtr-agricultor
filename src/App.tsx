@@ -54,6 +54,7 @@ type BeneficiarioVinculado = {
   nome: string;
   comunidade?: string;
   municipio?: string;
+  macroRegiaoId?: string;
   telefone?: string;
   cpf?: string;
   tecnico?: string;
@@ -874,6 +875,10 @@ export default function App() {
                   <div style={{ fontSize: 13, color: colors.muted }}>Técnico responsável</div>
                   <div style={{ fontSize: 18, fontWeight: 700, color: colors.text, marginTop: 8 }}>{beneficiarioVinculado?.tecnico || 'Não informado'}</div>
                 </div>
+                <div style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
+                  <div style={{ fontSize: 13, color: colors.muted }}>Macro região</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: colors.text, marginTop: 8 }}>{beneficiarioVinculado?.macroRegiaoId || usuarioSistema.macroRegiaoId || 'Não informada'}</div>
+                </div>
               </div>
             </div>
           )}
@@ -896,7 +901,7 @@ export default function App() {
                 </div>
                 <div style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
                   <div style={{ fontSize: 13, color: colors.muted }}>Macro região</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: colors.text, marginTop: 8 }}>{usuarioSistema.macroRegiaoId || '-'}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: colors.text, marginTop: 8 }}>{beneficiarioVinculado?.macroRegiaoId || usuarioSistema.macroRegiaoId || '-'}</div>
                 </div>
               </div>
             </div>

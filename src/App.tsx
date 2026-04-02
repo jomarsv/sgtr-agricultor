@@ -49,6 +49,18 @@ type UsuarioAgricultor = {
   ultimoLoginEm?: any;
 };
 
+type BeneficiarioVinculado = {
+  id: string;
+  nome: string;
+  comunidade?: string;
+  municipio?: string;
+  telefone?: string;
+  cpf?: string;
+  tecnico?: string;
+  status?: string;
+  statusCadastro?: 'rascunho' | 'pendente_validacao' | 'aprovado' | 'rejeitado' | 'aguardando_correcao' | 'inativo';
+};
+
 const JARILO_URL = 'https://www.jarilo.com.br/questions/question/3d1a5e16-c489-4819-925e-89e45c32425c/details';
 
 const colors = {
@@ -166,9 +178,32 @@ function cpfParaEmailInterno(cpfFormatado: string) {
   return `${numeros}@sgtr.app`;
 }
 
+function descricaoStatusCadastro(status?: BeneficiarioVinculado['statusCadastro']) {
+  switch (status) {
+    case 'aprovado':
+      return 'Cadastro aprovado e liberado para atendimento.';
+    case 'pendente_validacao':
+      return 'Cadastro aguardando validação do administrativo.';
+    case 'aguardando_correcao':
+      return 'Cadastro aguardando correção pela equipe técnica.';
+    case 'rejeitado':
+      return 'Cadastro rejeitado. Procure a equipe responsável.';
+    case 'inativo':
+      return 'Cadastro inativo no momento.';
+    case 'rascunho':
+    default:
+      return 'Cadastro em rascunho ou sem status definido.';
+  }
+}
+
+function bloquearInteracaoAgricultor(status?: BeneficiarioVinculado['statusCadastro']) {
+  return status === 'rejeitado' || status === 'inativo' || status === 'aguardando_correcao';
+}
+
 export default function App() {
   const [active, setActive] = useState<TelaKey>('visitas');
   const [usuarioSistema, setUsuarioSistema] = useState<UsuarioAgricultor | null>(null);
+  const [beneficiarioVinculado, setBeneficiarioVinculado] = useState<BeneficiarioVinculado | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [loginForm, setLoginForm] = useState({ cpf: '', senha: '' });
   const [loginMsg, setLoginMsg] = useState('');
@@ -206,8 +241,26 @@ export default function App() {
   useEffect(() => {
     let unsubProblemas: (() => void) | undefined;
     let unsubSolicitacoes: (() => void) | undefined;
+    let unsubBeneficiario: (() => void) | undefined;
 
     const startRealtime = (beneficiarioId: string) => {
+      unsubBeneficiario = onSnapshot(
+        doc(db, 'beneficiarios', beneficiarioId),
+        (snapshot) => {
+          if (!snapshot.exists()) {
+            setBeneficiarioVinculado(null);
+            setFirebaseStatus('erro');
+            setFirebaseMsg('Beneficiário vinculado não encontrado na base.');
+            return;
+          }
+          setBeneficiarioVinculado({ id: snapshot.id, ...snapshot.data() } as BeneficiarioVinculado);
+        },
+        (error) => {
+          console.error(error);
+          setBeneficiarioVinculado(null);
+        }
+      );
+
       unsubProblemas = onSnapshot(
         collection(db, 'problemas_agricultor'),
         (snapshot) => {
@@ -246,9 +299,11 @@ export default function App() {
     const unsubAuth = onAuthStateChanged(auth, async (user) => {
       unsubProblemas?.();
       unsubSolicitacoes?.();
+      unsubBeneficiario?.();
 
       if (!user) {
         setUsuarioSistema(null);
+        setBeneficiarioVinculado(null);
         setProblemas([]);
         setSolicitacoes([]);
         setAuthLoading(false);
@@ -319,6 +374,7 @@ export default function App() {
       } catch (error: any) {
         console.error(error);
         setUsuarioSistema(null);
+        setBeneficiarioVinculado(null);
         setProblemas([]);
         setSolicitacoes([]);
         setFirebaseStatus('erro');
@@ -333,6 +389,7 @@ export default function App() {
       unsubAuth();
       unsubProblemas?.();
       unsubSolicitacoes?.();
+      unsubBeneficiario?.();
     };
   }, []);
 
@@ -413,6 +470,11 @@ export default function App() {
   }
 
   async function salvarProblema() {
+    if (bloqueioOperacional) {
+      setMsgProblema(`Seu cadastro está em ${statusCadastroBeneficiario}. No momento não é possível enviar novos problemas.`);
+      return;
+    }
+
     if (!problemaForm.titulo) {
       setMsgProblema('Preencha ao menos o título do problema.');
       return;
@@ -471,6 +533,11 @@ export default function App() {
   }
 
   async function solicitarVisita() {
+    if (bloqueioOperacional) {
+      setMsgVisita(`Seu cadastro está em ${statusCadastroBeneficiario}. No momento não é possível solicitar novas visitas.`);
+      return;
+    }
+
     if (!visitaForm.motivo || !visitaForm.dataPreferida) {
       setMsgVisita('Preencha motivo e data preferida.');
       return;
@@ -505,6 +572,9 @@ export default function App() {
 
   const ultimosProblemas = useMemo(() => problemas.slice(0, 3), [problemas]);
   const ultimasSolicitacoes = useMemo(() => solicitacoes.slice(0, 5), [solicitacoes]);
+  const statusCadastroBeneficiario = beneficiarioVinculado?.statusCadastro;
+  const bloqueioOperacional = bloquearInteracaoAgricultor(statusCadastroBeneficiario);
+  const mensagemStatusCadastro = descricaoStatusCadastro(statusCadastroBeneficiario);
 
   if (authLoading && !usuarioSistema) {
     return (
@@ -575,6 +645,10 @@ export default function App() {
             <div style={{ fontSize: 20, fontWeight: 700 }}>{usuarioSistema.nome}</div>
             <div style={{ fontSize: 14, color: '#d7e4d4', marginTop: 6 }}>{usuarioSistema.cpfMasked || formatarCpf(usuarioSistema.cpf || '')}</div>
             {usuarioSistema.beneficiarioId && <div style={{ fontSize: 13, color: '#d7e4d4', marginTop: 6 }}>Cadastro: {usuarioSistema.beneficiarioId}</div>}
+            <div style={{ marginTop: 10 }}>
+              <Badge text={statusCadastroBeneficiario || 'sem_status'} tone={statusCadastroBeneficiario === 'aprovado' ? 'success' : bloqueioOperacional ? 'warning' : 'default'} />
+            </div>
+            <div style={{ fontSize: 12, color: '#d7e4d4', marginTop: 10 }}>{mensagemStatusCadastro}</div>
           </div>
 
           <div style={{ display: 'grid', gap: 8 }}>
@@ -631,12 +705,43 @@ export default function App() {
         </div>
 
         <div style={{ display: 'grid', gap: 20 }}>
+          {bloqueioOperacional && (
+            <div style={{ ...cardStyle(), border: '1px solid #f2e7c1', background: '#fffaf0' }}>
+              <h2 style={{ marginTop: 0, color: colors.text }}>Atenção ao cadastro</h2>
+              <p style={{ color: colors.muted, fontSize: 14, marginBottom: 0 }}>
+                {mensagemStatusCadastro} Enquanto essa situação não for regularizada pela equipe técnica ou administrativa, o envio de novos problemas e solicitações de visita fica bloqueado.
+              </p>
+            </div>
+          )}
+
+          {active === 'inicio' && (
+            <div style={cardStyle()}>
+              <h2 style={{ marginTop: 0, color: colors.text }}>Início</h2>
+              <p style={{ color: colors.muted, fontSize: 14 }}>Acompanhe o andamento do seu cadastro e use este canal para se comunicar com a equipe técnica.</p>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)', gap: 16, marginTop: 20 }}>
+                <div style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
+                  <div style={{ fontSize: 13, color: colors.muted }}>Status do cadastro</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: colors.text, marginTop: 8 }}>{statusCadastroBeneficiario || 'sem_status'}</div>
+                </div>
+                <div style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
+                  <div style={{ fontSize: 13, color: colors.muted }}>Problemas enviados</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: colors.text, marginTop: 8 }}>{problemas.length}</div>
+                </div>
+                <div style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
+                  <div style={{ fontSize: 13, color: colors.muted }}>Solicitações de visita</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: colors.text, marginTop: 8 }}>{solicitacoes.length}</div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {active === 'visitas' && (
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 0.95fr', gap: 20 }}>
               <div style={cardStyle()}>
                 <h2 style={{ margin: 0, fontSize: 28, color: colors.text }}>Solicitar visita técnica</h2>
                 <p style={{ margin: '10px 0 0 0', color: colors.muted, fontSize: 14 }}>Peça atendimento técnico e informe a melhor data para a propriedade.</p>
                 <div style={{ display: 'grid', gap: 16, marginTop: 22 }}>
+                  {bloqueioOperacional && <div style={{ color: '#8a5a1d', fontSize: 14, background: '#f2e7c1', borderRadius: 16, padding: 14 }}>{mensagemStatusCadastro}</div>}
                   <Input label="Motivo da visita" value={visitaForm.motivo} onChange={(v) => setVisitaForm((p) => ({ ...p, motivo: v }))} placeholder="Ex.: controle de pragas, manejo, solo" />
                   <Input label="Data preferida" value={visitaForm.dataPreferida} onChange={(v) => setVisitaForm((p) => ({ ...p, dataPreferida: v }))} placeholder="DD/MM/AAAA" />
                   <div>
@@ -647,7 +752,7 @@ export default function App() {
                     </select>
                   </div>
                   <Area label="Observações" value={visitaForm.observacoes} onChange={(v) => setVisitaForm((p) => ({ ...p, observacoes: v }))} placeholder="Informe detalhes úteis para a visita." />
-                  <ActionButton text="Enviar solicitação" onClick={solicitarVisita} />
+                  <ActionButton text={bloqueioOperacional ? 'Solicitação bloqueada' : 'Enviar solicitação'} onClick={solicitarVisita} secondary={bloqueioOperacional} />
                   {msgVisita && <div style={{ fontSize: 14, color: msgVisita.toLowerCase().includes('erro') ? '#8b1e1e' : '#166534' }}>{msgVisita}</div>}
                 </div>
               </div>
@@ -683,6 +788,7 @@ export default function App() {
                 <h2 style={{ margin: 0, fontSize: 28, color: colors.text }}>Relatar problema</h2>
                 <p style={{ margin: '10px 0 0 0', color: colors.muted, fontSize: 14 }}>Escreva, anexe imagem ou grave vídeo curto para facilitar o atendimento.</p>
                 <div style={{ display: 'grid', gap: 16, marginTop: 22 }}>
+                  {bloqueioOperacional && <div style={{ color: '#8a5a1d', fontSize: 14, background: '#f2e7c1', borderRadius: 16, padding: 14 }}>{mensagemStatusCadastro}</div>}
                   <Input label="Título" value={problemaForm.titulo} onChange={(v) => setProblemaForm((p) => ({ ...p, titulo: v }))} placeholder="Ex.: baixa pressão na irrigação" />
                   <Input label="Categoria" value={problemaForm.categoria} onChange={(v) => setProblemaForm((p) => ({ ...p, categoria: v }))} placeholder="Irrigação, praga, solo..." />
                   <Input label="Prioridade" value={problemaForm.prioridade} onChange={(v) => setProblemaForm((p) => ({ ...p, prioridade: v }))} placeholder="Alta, Média, Baixa" />
@@ -722,7 +828,7 @@ export default function App() {
                     )}
                   </div>
 
-                  <ActionButton text="Enviar problema" onClick={salvarProblema} />
+                  <ActionButton text={bloqueioOperacional ? 'Envio bloqueado' : 'Enviar problema'} onClick={salvarProblema} secondary={bloqueioOperacional} />
                   {msgProblema && <div style={{ fontSize: 14, color: msgProblema.toLowerCase().includes('erro') ? '#8b1e1e' : '#166534' }}>{msgProblema}</div>}
                 </div>
               </div>
@@ -751,10 +857,55 @@ export default function App() {
             </div>
           )}
 
-          {active !== 'problemas' && active !== 'visitas' && (
+          {active === 'status' && (
             <div style={cardStyle()}>
-              <h2 style={{ marginTop: 0, color: colors.text }}>Módulo em prototipagem</h2>
-              <p style={{ color: colors.muted, fontSize: 14 }}>Esta área continua pronta para evolução, mantendo a integração com Firebase já ativa no app.</p>
+              <h2 style={{ marginTop: 0, color: colors.text }}>Acompanhamento do cadastro</h2>
+              <div style={{ display: 'grid', gap: 14 }}>
+                <div style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
+                  <div style={{ fontSize: 13, color: colors.muted }}>Status de validação</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: colors.text, marginTop: 8 }}>{statusCadastroBeneficiario || 'sem_status'}</div>
+                  <div style={{ fontSize: 14, color: colors.muted, marginTop: 8 }}>{mensagemStatusCadastro}</div>
+                </div>
+                <div style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
+                  <div style={{ fontSize: 13, color: colors.muted }}>Status operacional</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: colors.text, marginTop: 8 }}>{beneficiarioVinculado?.status || 'Não informado'}</div>
+                </div>
+                <div style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
+                  <div style={{ fontSize: 13, color: colors.muted }}>Técnico responsável</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: colors.text, marginTop: 8 }}>{beneficiarioVinculado?.tecnico || 'Não informado'}</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {active === 'perfil' && (
+            <div style={cardStyle()}>
+              <h2 style={{ marginTop: 0, color: colors.text }}>Meu perfil</h2>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
+                <div style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
+                  <div style={{ fontSize: 13, color: colors.muted }}>Nome</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: colors.text, marginTop: 8 }}>{usuarioSistema.nome}</div>
+                </div>
+                <div style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
+                  <div style={{ fontSize: 13, color: colors.muted }}>CPF</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: colors.text, marginTop: 8 }}>{usuarioSistema.cpfMasked || formatarCpf(usuarioSistema.cpf || '') || '-'}</div>
+                </div>
+                <div style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
+                  <div style={{ fontSize: 13, color: colors.muted }}>E-mail interno de acesso</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: colors.text, marginTop: 8 }}>{cpfParaEmailInterno(usuarioSistema.cpfMasked || usuarioSistema.cpf || '')}</div>
+                </div>
+                <div style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
+                  <div style={{ fontSize: 13, color: colors.muted }}>Macro região</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: colors.text, marginTop: 8 }}>{usuarioSistema.macroRegiaoId || '-'}</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {active === 'locktec' && (
+            <div style={cardStyle()}>
+              <h2 style={{ marginTop: 0, color: colors.text }}>LockTec</h2>
+              <p style={{ color: colors.muted, fontSize: 14 }}>Área reservada para evoluções futuras. O acesso do agricultor continua controlado pelo usuário autenticado e pelo status do beneficiário vinculado.</p>
             </div>
           )}
         </div>

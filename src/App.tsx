@@ -4,7 +4,7 @@ import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebas
 import { auth, db } from './firebase';
 import { uploadArquivo } from './services/upload';
 
-type TelaKey = 'inicio' | 'problemas' | 'visitas' | 'locktec' | 'status' | 'perfil';
+type TelaKey = 'inicio' | 'problemas' | 'visitas' | 'locktec' | 'status' | 'perfil' | 'privacidade';
 
 type Problema = {
   id: string;
@@ -66,6 +66,7 @@ type BeneficiarioVinculado = {
 };
 
 const JARILO_URL = 'https://www.jarilo.com.br/questions/question/3d1a5e16-c489-4819-925e-89e45c32425c/details';
+const LGPD_CONSENTIMENTO_VERSAO = '2026-04-08-oferta-demanda';
 
 const colors = {
   bg: '#eef4ea',
@@ -452,7 +453,7 @@ export default function App() {
       const payload = {
         lgpdConsentimentoAppsMesmoControlador: true,
         lgpdConsentimentoAppsMesmoControladorEm: serverTimestamp(),
-        lgpdConsentimentoAppsMesmoControladorVersao: '2026-04-08'
+        lgpdConsentimentoAppsMesmoControladorVersao: LGPD_CONSENTIMENTO_VERSAO
       };
 
       await setDoc(doc(db, 'usuarios', usuarioSistema.uid), payload, { merge: true });
@@ -616,7 +617,10 @@ export default function App() {
   const statusCadastroBeneficiario = beneficiarioVinculado?.statusCadastro;
   const bloqueioOperacional = bloquearInteracaoAgricultor(statusCadastroBeneficiario);
   const mensagemStatusCadastro = descricaoStatusCadastro(statusCadastroBeneficiario);
-  const consentimentoLGPDAtivo = Boolean(usuarioSistema?.lgpdConsentimentoAppsMesmoControlador);
+  const consentimentoLGPDAtivo = Boolean(
+    usuarioSistema?.lgpdConsentimentoAppsMesmoControlador
+    && usuarioSistema?.lgpdConsentimentoAppsMesmoControladorVersao === LGPD_CONSENTIMENTO_VERSAO
+  );
 
   if (authLoading && !usuarioSistema) {
     return (
@@ -700,7 +704,8 @@ export default function App() {
               ['visitas', 'Solicitar visita'],
               ['locktec', 'LockTec'],
               ['status', 'Acompanhamento'],
-              ['perfil', 'Meu perfil']
+              ['perfil', 'Meu perfil'],
+              ['privacidade', 'Privacidade']
             ].map(([key, label]) => {
               const selected = active === key;
               return (
@@ -760,8 +765,11 @@ export default function App() {
             <div style={{ ...cardStyle(), border: '1px solid #d8e5d4', background: '#f8fcf6' }}>
               <h2 style={{ marginTop: 0, color: colors.text }}>Consentimento de uso de dados</h2>
               <p style={{ color: colors.muted, fontSize: 14, marginBottom: 0 }}>
-                Acesse <strong>Meu perfil</strong> para registrar o aceite de compartilhamento dos dados do seu cadastro com outros apps do mesmo proprietário do app agricultor.
+                Acesse <strong>Meu perfil</strong> para registrar o aceite de compartilhamento dos dados do seu cadastro com os apps do mesmo proprietário e com a plataforma de coordenação de oferta e demanda agrícola.
               </p>
+              <div style={{ marginTop: 14, maxWidth: 240 }}>
+                <ActionButton text="Ler política resumida" onClick={() => setActive('privacidade')} secondary />
+              </div>
             </div>
           )}
 
@@ -958,7 +966,7 @@ export default function App() {
               <div style={{ ...cardStyle({ marginTop: 20, boxShadow: 'none', border: `1px solid ${colors.border}`, background: '#f8fcf6' }) }}>
                 <div style={{ fontSize: 20, fontWeight: 700, color: colors.text }}>Consentimento LGPD</div>
                 <p style={{ color: colors.muted, fontSize: 14, marginTop: 10 }}>
-                  Ao registrar este aceite, você concorda que os dados do seu cadastro possam ser utilizados em outros apps do mesmo proprietário do app agricultor, exclusivamente para operação, atendimento e acompanhamento dos serviços prestados.
+                  Ao registrar este aceite, você concorda que os dados do seu cadastro e das interações realizadas nos apps técnico e agricultor possam ser utilizados em outros apps do mesmo proprietário e também como base de dados da plataforma de coordenação de oferta e demanda agrícola, exclusivamente para operação, atendimento, acompanhamento e coordenação dos serviços prestados.
                 </p>
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginTop: 14, color: colors.text, fontSize: 14 }}>
                   <input
@@ -967,8 +975,11 @@ export default function App() {
                     onChange={(e) => setLgpdConsentChecked(e.target.checked)}
                     style={{ marginTop: 2 }}
                   />
-                  <span>Li e concordo com o compartilhamento dos dados do meu cadastro entre apps do mesmo proprietário do app agricultor para fins de atendimento, operação e acompanhamento.</span>
+                  <span>Li e concordo com o uso dos dados do meu cadastro e das minhas interações nos apps técnico e agricultor em outros apps do mesmo proprietário e na plataforma de coordenação de oferta e demanda agrícola, para fins de operação, atendimento, acompanhamento e coordenação.</span>
                 </label>
+                <div style={{ marginTop: 14, maxWidth: 260 }}>
+                  <ActionButton text="Ler política resumida" onClick={() => setActive('privacidade')} secondary />
+                </div>
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '240px 1fr', gap: 14, alignItems: 'center', marginTop: 18 }}>
                   <ActionButton text={lgpdConsentSaving ? 'Salvando aceite...' : consentimentoLGPDAtivo ? 'Atualizar aceite' : 'Registrar aceite'} onClick={salvarConsentimentoLGPD} secondary={!lgpdConsentChecked || lgpdConsentSaving} />
                   <div style={{ fontSize: 13, color: colors.muted }}>
@@ -977,6 +988,51 @@ export default function App() {
                   </div>
                 </div>
                 {lgpdConsentMsg && <div style={{ fontSize: 14, color: lgpdConsentMsg.toLowerCase().includes('erro') ? '#8b1e1e' : '#166534', marginTop: 12 }}>{lgpdConsentMsg}</div>}
+              </div>
+            </div>
+          )}
+
+          {active === 'privacidade' && (
+            <div style={cardStyle()}>
+              <h2 style={{ marginTop: 0, color: colors.text }}>Política resumida de privacidade</h2>
+              <p style={{ color: colors.muted, fontSize: 14 }}>
+                Este resumo apresenta de forma direta como os dados do agricultor são utilizados dentro do ecossistema SGTR e na plataforma de coordenação de oferta e demanda agrícola.
+              </p>
+              <div style={{ display: 'grid', gap: 16, marginTop: 20 }}>
+                <div style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: colors.text }}>Quais dados podem ser utilizados</div>
+                  <div style={{ fontSize: 14, color: colors.muted, marginTop: 8 }}>
+                    Dados cadastrais, dados do beneficiário, macro região, informações de atendimento, problemas reportados, solicitações de visita e registros operacionais gerados nos apps técnico e agricultor.
+                  </div>
+                </div>
+                <div style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: colors.text }}>Para quais finalidades</div>
+                  <div style={{ fontSize: 14, color: colors.muted, marginTop: 8 }}>
+                    Operação dos serviços, acompanhamento técnico, validação administrativa, integração entre apps do mesmo proprietário e formação da base de dados da plataforma de coordenação de oferta e demanda agrícola.
+                  </div>
+                </div>
+                <div style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: colors.text }}>Com quem os dados circulam</div>
+                  <div style={{ fontSize: 14, color: colors.muted, marginTop: 8 }}>
+                    Com equipes autorizadas dos apps do mesmo proprietário, respeitando perfil de acesso, necessidade operacional e regras de segurança do sistema.
+                  </div>
+                </div>
+                <div style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: colors.text }}>Base registrada no sistema</div>
+                  <div style={{ fontSize: 14, color: colors.muted, marginTop: 8 }}>
+                    Quando você marca o aceite, o sistema grava a concordância, a data do registro e a versão do termo para rastreabilidade.
+                  </div>
+                </div>
+                <div style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: colors.text }}>Observação importante</div>
+                  <div style={{ fontSize: 14, color: colors.muted, marginTop: 8 }}>
+                    Este é um resumo operacional exibido no app. O ideal é manter também uma política completa validada pelo responsável jurídico ou encarregado de dados do projeto.
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '240px 240px', gap: 14, marginTop: 20 }}>
+                <ActionButton text="Voltar ao perfil" onClick={() => setActive('perfil')} secondary />
+                {!consentimentoLGPDAtivo && <ActionButton text="Ir para o aceite" onClick={() => setActive('perfil')} />}
               </div>
             </div>
           )}

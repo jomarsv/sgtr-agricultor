@@ -45,6 +45,9 @@ type UsuarioAgricultor = {
   cpfMasked?: string;
   beneficiarioId?: string;
   macroRegiaoId?: string;
+  lgpdConsentimentoAppsMesmoControlador?: boolean;
+  lgpdConsentimentoAppsMesmoControladorEm?: any;
+  lgpdConsentimentoAppsMesmoControladorVersao?: string;
   ativo: boolean;
   ultimoLoginEm?: any;
 };
@@ -214,6 +217,9 @@ export default function App() {
   const [firebaseMsg, setFirebaseMsg] = useState('Faça login com CPF e senha para acessar o app.');
   const [msgProblema, setMsgProblema] = useState('');
   const [msgVisita, setMsgVisita] = useState('');
+  const [lgpdConsentChecked, setLgpdConsentChecked] = useState(false);
+  const [lgpdConsentSaving, setLgpdConsentSaving] = useState(false);
+  const [lgpdConsentMsg, setLgpdConsentMsg] = useState('');
 
   const [problemaForm, setProblemaForm] = useState({
     titulo: '',
@@ -394,6 +400,11 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    setLgpdConsentChecked(Boolean(usuarioSistema?.lgpdConsentimentoAppsMesmoControlador));
+    setLgpdConsentMsg('');
+  }, [usuarioSistema]);
+
   async function realizarLogin() {
     const cpfLimpo = loginForm.cpf.replace(/\D/g, '');
 
@@ -423,6 +434,35 @@ export default function App() {
     } catch (error) {
       console.error(error);
       setLoginMsg('Erro ao sair do sistema.');
+    }
+  }
+
+  async function salvarConsentimentoLGPD() {
+    if (!usuarioSistema) return;
+
+    if (!lgpdConsentChecked) {
+      setLgpdConsentMsg('Marque a opção de consentimento antes de registrar o aceite.');
+      return;
+    }
+
+    try {
+      setLgpdConsentSaving(true);
+      setLgpdConsentMsg('Registrando seu aceite...');
+
+      const payload = {
+        lgpdConsentimentoAppsMesmoControlador: true,
+        lgpdConsentimentoAppsMesmoControladorEm: serverTimestamp(),
+        lgpdConsentimentoAppsMesmoControladorVersao: '2026-04-08'
+      };
+
+      await setDoc(doc(db, 'usuarios', usuarioSistema.uid), payload, { merge: true });
+      setUsuarioSistema((prev) => (prev ? { ...prev, ...payload } : prev));
+      setLgpdConsentMsg('Aceite registrado com sucesso.');
+    } catch (error) {
+      console.error(error);
+      setLgpdConsentMsg('Erro ao registrar o aceite LGPD.');
+    } finally {
+      setLgpdConsentSaving(false);
     }
   }
 
@@ -576,6 +616,7 @@ export default function App() {
   const statusCadastroBeneficiario = beneficiarioVinculado?.statusCadastro;
   const bloqueioOperacional = bloquearInteracaoAgricultor(statusCadastroBeneficiario);
   const mensagemStatusCadastro = descricaoStatusCadastro(statusCadastroBeneficiario);
+  const consentimentoLGPDAtivo = Boolean(usuarioSistema?.lgpdConsentimentoAppsMesmoControlador);
 
   if (authLoading && !usuarioSistema) {
     return (
@@ -711,6 +752,15 @@ export default function App() {
               <h2 style={{ marginTop: 0, color: colors.text }}>Atenção ao cadastro</h2>
               <p style={{ color: colors.muted, fontSize: 14, marginBottom: 0 }}>
                 {mensagemStatusCadastro} Enquanto essa situação não for regularizada pela equipe técnica ou administrativa, o envio de novos problemas e solicitações de visita fica bloqueado.
+              </p>
+            </div>
+          )}
+
+          {!consentimentoLGPDAtivo && (
+            <div style={{ ...cardStyle(), border: '1px solid #d8e5d4', background: '#f8fcf6' }}>
+              <h2 style={{ marginTop: 0, color: colors.text }}>Consentimento de uso de dados</h2>
+              <p style={{ color: colors.muted, fontSize: 14, marginBottom: 0 }}>
+                Acesse <strong>Meu perfil</strong> para registrar o aceite de compartilhamento dos dados do seu cadastro com outros apps do mesmo proprietário do app agricultor.
               </p>
             </div>
           )}
@@ -903,6 +953,30 @@ export default function App() {
                   <div style={{ fontSize: 13, color: colors.muted }}>Macro região</div>
                   <div style={{ fontSize: 18, fontWeight: 700, color: colors.text, marginTop: 8 }}>{beneficiarioVinculado?.macroRegiaoId || usuarioSistema.macroRegiaoId || '-'}</div>
                 </div>
+              </div>
+
+              <div style={{ ...cardStyle({ marginTop: 20, boxShadow: 'none', border: `1px solid ${colors.border}`, background: '#f8fcf6' }) }}>
+                <div style={{ fontSize: 20, fontWeight: 700, color: colors.text }}>Consentimento LGPD</div>
+                <p style={{ color: colors.muted, fontSize: 14, marginTop: 10 }}>
+                  Ao registrar este aceite, você concorda que os dados do seu cadastro possam ser utilizados em outros apps do mesmo proprietário do app agricultor, exclusivamente para operação, atendimento e acompanhamento dos serviços prestados.
+                </p>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginTop: 14, color: colors.text, fontSize: 14 }}>
+                  <input
+                    type="checkbox"
+                    checked={lgpdConsentChecked}
+                    onChange={(e) => setLgpdConsentChecked(e.target.checked)}
+                    style={{ marginTop: 2 }}
+                  />
+                  <span>Li e concordo com o compartilhamento dos dados do meu cadastro entre apps do mesmo proprietário do app agricultor para fins de atendimento, operação e acompanhamento.</span>
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '240px 1fr', gap: 14, alignItems: 'center', marginTop: 18 }}>
+                  <ActionButton text={lgpdConsentSaving ? 'Salvando aceite...' : consentimentoLGPDAtivo ? 'Atualizar aceite' : 'Registrar aceite'} onClick={salvarConsentimentoLGPD} secondary={!lgpdConsentChecked || lgpdConsentSaving} />
+                  <div style={{ fontSize: 13, color: colors.muted }}>
+                    Status atual: <strong style={{ color: colors.text }}>{consentimentoLGPDAtivo ? 'aceito' : 'pendente'}</strong>
+                    {usuarioSistema.lgpdConsentimentoAppsMesmoControladorVersao ? ` • versão ${usuarioSistema.lgpdConsentimentoAppsMesmoControladorVersao}` : ''}
+                  </div>
+                </div>
+                {lgpdConsentMsg && <div style={{ fontSize: 14, color: lgpdConsentMsg.toLowerCase().includes('erro') ? '#8b1e1e' : '#166534', marginTop: 12 }}>{lgpdConsentMsg}</div>}
               </div>
             </div>
           )}

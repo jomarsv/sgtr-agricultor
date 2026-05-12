@@ -216,6 +216,23 @@ function bloquearInteracaoAgricultor(status?: BeneficiarioVinculado['statusCadas
   return status === 'rejeitado' || status === 'inativo' || status === 'aguardando_correcao';
 }
 
+function traduzirErroFirestore(error: any) {
+  const code = error?.code || '';
+  switch (code) {
+    case 'permission-denied':
+    case 'firestore/permission-denied':
+      return 'Sem permissão no Firestore para gravar esta solicitação.';
+    case 'unauthenticated':
+    case 'firestore/unauthenticated':
+      return 'Usuário não autenticado para esta operação.';
+    case 'unavailable':
+    case 'firestore/unavailable':
+      return 'Firestore indisponível no momento. Tente novamente.';
+    default:
+      return `Falha no Firestore: ${code || 'sem_codigo'}.`;
+  }
+}
+
 export default function App() {
   const [active, setActive] = useState<TelaKey>('visitas');
   const [usuarioSistema, setUsuarioSistema] = useState<UsuarioAgricultor | null>(null);
@@ -637,9 +654,9 @@ export default function App() {
 
       setVisitaForm({ motivo: '', dataPreferida: '', turno: 'Manhã', observacoes: '' });
       setMsgVisita('Solicitação enviada ao Firestore com sucesso.');
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setMsgVisita('Erro ao enviar solicitação de visita.');
+      setMsgVisita(traduzirErroFirestore(error));
     }
   }
 
@@ -673,9 +690,9 @@ export default function App() {
       });
 
       setMsgWhatsapp('Solicitação de interação via WhatsApp enviada com sucesso.');
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setMsgWhatsapp('Erro ao enviar solicitação de interação via WhatsApp.');
+      setMsgWhatsapp(traduzirErroFirestore(error));
     }
   }
 

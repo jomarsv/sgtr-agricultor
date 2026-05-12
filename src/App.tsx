@@ -1072,6 +1072,10 @@ export default function App() {
                   <div style={{ fontSize: 18, fontWeight: 700, color: colors.text, marginTop: 8 }}>{cpfParaEmailInterno(usuarioSistema.cpfMasked || usuarioSistema.cpf || '')}</div>
                 </div>
                 <div style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
+                  <div style={{ fontSize: 13, color: colors.muted }}>Celular cadastrado</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: colors.text, marginTop: 8 }}>{beneficiarioVinculado?.telefone || 'Não informado no cadastro técnico'}</div>
+                </div>
+                <div style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
                   <div style={{ fontSize: 13, color: colors.muted }}>Macro região</div>
                   <div style={{ fontSize: 18, fontWeight: 700, color: colors.text, marginTop: 8 }}>{beneficiarioVinculado?.macroRegiaoId || usuarioSistema.macroRegiaoId || '-'}</div>
                 </div>

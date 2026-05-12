@@ -37,6 +37,17 @@ type SolicitacaoVisita = {
   uidCriador?: string;
 };
 
+type SolicitacaoWhatsapp = {
+  id: string;
+  motivo: string;
+  observacoes: string;
+  status: string;
+  dataSolicitacao: string;
+  beneficiarioId?: string;
+  beneficiarioNome?: string;
+  uidCriador?: string;
+  telefoneContato?: string;
+};
 type UsuarioAgricultor = {
   uid: string;
   nome: string;
@@ -214,10 +225,12 @@ export default function App() {
   const [loginMsg, setLoginMsg] = useState('');
   const [problemas, setProblemas] = useState<Problema[]>([]);
   const [solicitacoes, setSolicitacoes] = useState<SolicitacaoVisita[]>([]);
+  const [solicitacoesWhatsapp, setSolicitacoesWhatsapp] = useState<SolicitacaoWhatsapp[]>([]);
   const [firebaseStatus, setFirebaseStatus] = useState<'conectando' | 'online' | 'erro'>('conectando');
   const [firebaseMsg, setFirebaseMsg] = useState('Faça login com CPF e senha para acessar o app.');
   const [msgProblema, setMsgProblema] = useState('');
   const [msgVisita, setMsgVisita] = useState('');
+  const [msgWhatsapp, setMsgWhatsapp] = useState('');
   const [lgpdConsentChecked, setLgpdConsentChecked] = useState(false);
   const [lgpdConsentSaving, setLgpdConsentSaving] = useState(false);
   const [lgpdConsentMsg, setLgpdConsentMsg] = useState('');
@@ -249,6 +262,7 @@ export default function App() {
   useEffect(() => {
     let unsubProblemas: (() => void) | undefined;
     let unsubSolicitacoes: (() => void) | undefined;
+    let unsubSolicitacoesWhatsapp: (() => void) | undefined;
     let unsubBeneficiario: (() => void) | undefined;
 
     const startRealtime = (beneficiarioId: string) => {
@@ -302,11 +316,26 @@ export default function App() {
           setFirebaseMsg('Falha ao ler solicitações de visita no Firestore.');
         }
       );
+
+      unsubSolicitacoesWhatsapp = onSnapshot(
+        collection(db, 'solicitacoes_whatsapp'),
+        (snapshot) => {
+          const lista = snapshot.docs
+            .map((item) => ({ id: item.id, ...item.data() } as SolicitacaoWhatsapp))
+            .filter((item) => item.beneficiarioId === beneficiarioId);
+          setSolicitacoesWhatsapp(lista.sort((a, b) => String(b.dataSolicitacao || '').localeCompare(String(a.dataSolicitacao || ''))));
+        },
+        (error) => {
+          console.error(error);
+          setSolicitacoesWhatsapp([]);
+        }
+      );
     };
 
     const unsubAuth = onAuthStateChanged(auth, async (user) => {
       unsubProblemas?.();
       unsubSolicitacoes?.();
+      unsubSolicitacoesWhatsapp?.();
       unsubBeneficiario?.();
 
       if (!user) {
@@ -314,6 +343,7 @@ export default function App() {
         setBeneficiarioVinculado(null);
         setProblemas([]);
         setSolicitacoes([]);
+        setSolicitacoesWhatsapp([]);
         setAuthLoading(false);
         setFirebaseStatus('conectando');
         setFirebaseMsg('Faça login com CPF e senha para acessar o app.');
@@ -397,6 +427,7 @@ export default function App() {
       unsubAuth();
       unsubProblemas?.();
       unsubSolicitacoes?.();
+      unsubSolicitacoesWhatsapp?.();
       unsubBeneficiario?.();
     };
   }, []);
@@ -612,8 +643,45 @@ export default function App() {
     }
   }
 
+  async function solicitarInteracaoWhatsapp() {
+    if (bloqueioOperacional) {
+      setMsgWhatsapp(`Seu cadastro está em ${statusCadastroBeneficiario}. No momento não é possível solicitar interação via WhatsApp.`);
+      return;
+    }
+
+    if (!visitaForm.motivo) {
+      setMsgWhatsapp('Informe o motivo da interação via WhatsApp.');
+      return;
+    }
+
+    if (!usuarioSistema?.beneficiarioId) {
+      setMsgWhatsapp('Seu cadastro ainda não está vinculado corretamente. Procure a equipe da SAF.');
+      return;
+    }
+
+    try {
+      await addDoc(collection(db, 'solicitacoes_whatsapp'), {
+        beneficiarioId: usuarioSistema.beneficiarioId,
+        beneficiarioNome: usuarioSistema.nome,
+        uidCriador: usuarioSistema.uid,
+        motivo: visitaForm.motivo,
+        observacoes: visitaForm.observacoes,
+        telefoneContato: beneficiarioVinculado?.telefone || '',
+        status: 'Solicitada',
+        dataSolicitacao: new Date().toLocaleString('pt-BR'),
+        createdAt: serverTimestamp()
+      });
+
+      setMsgWhatsapp('Solicitação de interação via WhatsApp enviada com sucesso.');
+    } catch (error) {
+      console.error(error);
+      setMsgWhatsapp('Erro ao enviar solicitação de interação via WhatsApp.');
+    }
+  }
+
   const ultimosProblemas = useMemo(() => problemas.slice(0, 3), [problemas]);
   const ultimasSolicitacoes = useMemo(() => solicitacoes.slice(0, 5), [solicitacoes]);
+  const ultimasSolicitacoesWhatsapp = useMemo(() => solicitacoesWhatsapp.slice(0, 5), [solicitacoesWhatsapp]);
   const statusCadastroBeneficiario = beneficiarioVinculado?.statusCadastro;
   const bloqueioOperacional = bloquearInteracaoAgricultor(statusCadastroBeneficiario);
   const mensagemStatusCadastro = descricaoStatusCadastro(statusCadastroBeneficiario);
@@ -798,7 +866,7 @@ export default function App() {
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 0.95fr', gap: 20 }}>
               <div style={cardStyle()}>
                 <h2 style={{ margin: 0, fontSize: 28, color: colors.text }}>Solicitar visita técnica</h2>
-                <p style={{ margin: '10px 0 0 0', color: colors.muted, fontSize: 14 }}>Peça atendimento técnico e informe a melhor data para a propriedade.</p>
+                <p style={{ margin: '10px 0 0 0', color: colors.muted, fontSize: 14 }}>Peça atendimento técnico presencial ou solicite uma interação online via WhatsApp.</p>
                 <div style={{ display: 'grid', gap: 16, marginTop: 22 }}>
                   {bloqueioOperacional && <div style={{ color: '#8a5a1d', fontSize: 14, background: '#f2e7c1', borderRadius: 16, padding: 14 }}>{mensagemStatusCadastro}</div>}
                   <Input label="Motivo da visita" value={visitaForm.motivo} onChange={(v) => setVisitaForm((p) => ({ ...p, motivo: v }))} placeholder="Ex.: controle de pragas, manejo, solo" />
@@ -811,31 +879,60 @@ export default function App() {
                     </select>
                   </div>
                   <Area label="Observações" value={visitaForm.observacoes} onChange={(v) => setVisitaForm((p) => ({ ...p, observacoes: v }))} placeholder="Informe detalhes úteis para a visita." />
-                  <ActionButton text={bloqueioOperacional ? 'Solicitação bloqueada' : 'Enviar solicitação'} onClick={solicitarVisita} secondary={bloqueioOperacional} />
+                  <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
+                    <ActionButton text={bloqueioOperacional ? 'Solicitação bloqueada' : 'Enviar solicitação de visita'} onClick={solicitarVisita} secondary={bloqueioOperacional} />
+                    <ActionButton text={bloqueioOperacional ? 'WhatsApp bloqueado' : 'Solicitar interação via WhatsApp'} onClick={solicitarInteracaoWhatsapp} secondary />
+                  </div>
                   {msgVisita && <div style={{ fontSize: 14, color: msgVisita.toLowerCase().includes('erro') ? '#8b1e1e' : '#166534' }}>{msgVisita}</div>}
+                  {msgWhatsapp && <div style={{ fontSize: 14, color: msgWhatsapp.toLowerCase().includes('erro') ? '#8b1e1e' : '#166534' }}>{msgWhatsapp}</div>}
                 </div>
               </div>
 
-              <div style={cardStyle()}>
-                <h3 style={{ marginTop: 0, color: colors.text, fontSize: 20 }}>Solicitações de visita</h3>
-                <div style={{ display: 'grid', gap: 14 }}>
-                  {ultimasSolicitacoes.length === 0 ? (
-                    <div style={{ background: colors.chip, borderRadius: 18, padding: 16, color: colors.muted }}>Nenhuma solicitação enviada ainda.</div>
-                  ) : (
-                    ultimasSolicitacoes.map((item) => (
-                      <div key={item.id} style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
-                          <div style={{ fontWeight: 700, color: colors.text, fontSize: 17 }}>{item.motivo}</div>
-                          <Badge text={item.status} tone={item.status === 'Atendida' ? 'success' : 'default'} />
+              <div style={{ display: 'grid', gap: 20 }}>
+                <div style={cardStyle()}>
+                  <h3 style={{ marginTop: 0, color: colors.text, fontSize: 20 }}>Solicitações de visita</h3>
+                  <div style={{ display: 'grid', gap: 14 }}>
+                    {ultimasSolicitacoes.length === 0 ? (
+                      <div style={{ background: colors.chip, borderRadius: 18, padding: 16, color: colors.muted }}>Nenhuma solicitação de visita enviada ainda.</div>
+                    ) : (
+                      ultimasSolicitacoes.map((item) => (
+                        <div key={item.id} style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+                            <div style={{ fontWeight: 700, color: colors.text, fontSize: 17 }}>{item.motivo}</div>
+                            <Badge text={item.status} tone={item.status === 'Atendida' ? 'success' : 'default'} />
+                          </div>
+                          <div style={{ marginTop: 12, color: colors.muted, fontSize: 14 }}>Data preferida: {item.dataPreferida} • {item.turno}</div>
+                          <div style={{ marginTop: 8, color: colors.muted, fontSize: 14 }}>{item.observacoes}</div>
+                          <div style={{ marginTop: 12 }}>
+                            <Badge text={`Solicitada em ${item.dataSolicitacao}`} tone="success" />
+                          </div>
                         </div>
-                        <div style={{ marginTop: 12, color: colors.muted, fontSize: 14 }}>Data preferida: {item.dataPreferida} • {item.turno}</div>
-                        <div style={{ marginTop: 8, color: colors.muted, fontSize: 14 }}>{item.observacoes}</div>
-                        <div style={{ marginTop: 12 }}>
-                          <Badge text={`Solicitada em ${item.dataSolicitacao}`} tone="success" />
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div style={cardStyle()}>
+                  <h3 style={{ marginTop: 0, color: colors.text, fontSize: 20 }}>Interações via WhatsApp</h3>
+                  <div style={{ display: 'grid', gap: 14 }}>
+                    {ultimasSolicitacoesWhatsapp.length === 0 ? (
+                      <div style={{ background: colors.chip, borderRadius: 18, padding: 16, color: colors.muted }}>Nenhuma solicitação de WhatsApp enviada ainda.</div>
+                    ) : (
+                      ultimasSolicitacoesWhatsapp.map((item) => (
+                        <div key={item.id} style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'flex-start' }}>
+                            <div style={{ fontWeight: 700, color: colors.text, fontSize: 17 }}>{item.motivo}</div>
+                            <Badge text={item.status} tone={item.status === 'Concluída' ? 'success' : 'default'} />
+                          </div>
+                          <div style={{ marginTop: 8, color: colors.muted, fontSize: 14 }}>{item.observacoes || 'Sem observações adicionais.'}</div>
+                          <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                            {item.telefoneContato && <Badge text={item.telefoneContato} />}
+                            <Badge text={`Solicitada em ${item.dataSolicitacao}`} tone="success" />
+                          </div>
                         </div>
-                      </div>
-                    ))
-                  )}
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

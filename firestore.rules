@@ -1,0 +1,373 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /*
+      Estrutura assumida pelos apps:
+      - usuarios/{uid}: { perfil, ativo, nome, emailInterno, macroRegiaoId?, tecnicoId?, beneficiarioId?, ... }
+      - beneficiarios/{id}: { macroRegiaoId, statusCadastro, tecnico, ... }
+      - diagnosticos/{beneficiarioId}
+      - problemas_agricultor/{id}: { beneficiarioId, uidCriador, ... }
+      - solicitacoes_visita/{id}: { beneficiarioId, uidCriador, ... }
+      - visitas_tecnicas/{id}: { tecnico, beneficiario, ... }
+
+      Para modo estrito, as queries dos apps precisam usar filtros compatíveis.
+      Exemplo:
+      - tecnico: where('macroRegiaoId', '==', myMacro())
+      - agricultor: where('beneficiarioId', '==', myBeneficiarioId())
+    */
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function myUserPath() {
+      return /databases/$(database)/documents/usuarios/$(request.auth.uid);
+    }
+
+    function myUserExists() {
+      return signedIn() && exists(myUserPath());
+    }
+
+    function myUser() {
+      return get(myUserPath()).data;
+    }
+
+    function myProfile() {
+      return myUserExists() ? myUser().perfil : null;
+    }
+
+    function myActive() {
+      return myUserExists() && myUser().ativo == true;
+    }
+
+    function myMacro() {
+      return myUserExists() ? myUser().macroRegiaoId : null;
+    }
+
+    function myBeneficiarioId() {
+      return myUserExists() ? myUser().beneficiarioId : null;
+    }
+
+    function isGestao() {
+      return myActive() && myProfile() == 'gestao_geral';
+    }
+
+    function isSupervisor() {
+      return myActive() && myProfile() == 'supervisor';
+    }
+
+    function isAdministrativo() {
+      return myActive() && myProfile() == 'administrativo';
+    }
+
+    function isTecnico() {
+      return myActive() && myProfile() == 'tecnico';
+    }
+
+    function isAgricultor() {
+      return myActive() && myProfile() == 'agricultor';
+    }
+
+    function isEquipeInterna() {
+      return isGestao() || isSupervisor() || isAdministrativo() || isTecnico();
+    }
+
+    function canManageUserStatus(target) {
+      return isGestao()
+        || (isSupervisor() && target.perfil in ['administrativo', 'tecnico', 'agricultor']);
+    }
+
+    function canManageTecnicoMacro(target) {
+      return (isGestao() || isSupervisor()) && target.perfil == 'tecnico';
+    }
+
+    function selfUserUpdateAllowed(userId) {
+      return request.auth.uid == userId
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'nome',
+          'emailInterno',
+          'telefone',
+          'cpf',
+          'cpfMasked',
+          'cargo',
+          'instituicao',
+          'lgpdConsentimentoAppsMesmoControlador',
+          'lgpdConsentimentoAppsMesmoControladorEm',
+          'lgpdConsentimentoAppsMesmoControladorVersao',
+          'ultimoLoginEm'
+        ])
+        && request.resource.data.perfil == resource.data.perfil
+        && request.resource.data.ativo == resource.data.ativo
+        && request.resource.data.macroRegiaoId == resource.data.macroRegiaoId
+        && request.resource.data.tecnicoId == resource.data.tecnicoId
+        && request.resource.data.beneficiarioId == resource.data.beneficiarioId;
+    }
+
+    function managedUserUpdateAllowed(target) {
+      return (
+          canManageUserStatus(target)
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+            'ativo',
+            'ultimoLoginEm'
+          ])
+        )
+        || (
+          canManageTecnicoMacro(target)
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+            'macroRegiaoId',
+            'ultimoLoginEm'
+          ])
+        )
+        || (
+          canManageTecnicoMacro(target)
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+            'ativo',
+            'macroRegiaoId',
+            'ultimoLoginEm'
+          ])
+        );
+    }
+
+    function managedUserCoreFieldsPreserved() {
+      return request.resource.data.perfil == resource.data.perfil
+        && request.resource.data.nome == resource.data.nome
+        && request.resource.data.emailInterno == resource.data.emailInterno
+        && request.resource.data.cpf == resource.data.cpf
+        && request.resource.data.cpfMasked == resource.data.cpfMasked
+        && request.resource.data.tecnicoId == resource.data.tecnicoId
+        && request.resource.data.beneficiarioId == resource.data.beneficiarioId
+        && request.resource.data.telefone == resource.data.telefone
+        && request.resource.data.cargo == resource.data.cargo
+        && request.resource.data.instituicao == resource.data.instituicao
+        && request.resource.data.lgpdConsentimentoAppsMesmoControlador == resource.data.lgpdConsentimentoAppsMesmoControlador
+        && request.resource.data.lgpdConsentimentoAppsMesmoControladorEm == resource.data.lgpdConsentimentoAppsMesmoControladorEm
+        && request.resource.data.lgpdConsentimentoAppsMesmoControladorVersao == resource.data.lgpdConsentimentoAppsMesmoControladorVersao;
+    }
+
+    function tecnicoAllowedCadastroStatus(status) {
+      return status in ['rascunho', 'pendente_validacao', 'aguardando_correcao'];
+    }
+
+    function administrativoAllowedCadastroStatus(status) {
+      return status in ['pendente_validacao', 'aprovado', 'rejeitado', 'aguardando_correcao', 'inativo'];
+    }
+
+    function canReadBeneficiario(beneficiarioId, data) {
+      return isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (isTecnico() && data.macroRegiaoId == myMacro())
+        || (isAgricultor() && beneficiarioId == myBeneficiarioId());
+    }
+
+    match /usuarios/{userId} {
+      allow read: if myActive() && (
+        request.auth.uid == userId
+        || isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+      );
+
+      allow create: if false;
+
+      allow update: if myActive()
+        && (
+          selfUserUpdateAllowed(userId)
+          || (managedUserUpdateAllowed(resource.data) && managedUserCoreFieldsPreserved())
+        );
+
+      allow delete: if false;
+    }
+
+    match /beneficiarios/{beneficiarioId} {
+      allow read: if myActive() && canReadBeneficiario(beneficiarioId, resource.data);
+
+      allow create: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || (
+          isAdministrativo()
+          && request.resource.data.statusCadastro in ['aprovado', 'pendente_validacao', 'rejeitado', 'aguardando_correcao', 'inativo']
+        )
+        || (
+          isTecnico()
+          && request.resource.data.macroRegiaoId == myMacro()
+          && tecnicoAllowedCadastroStatus(request.resource.data.statusCadastro)
+        )
+      );
+
+      allow update: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || (
+          isAdministrativo()
+          && administrativoAllowedCadastroStatus(request.resource.data.statusCadastro)
+        )
+        || (
+          isTecnico()
+          && resource.data.macroRegiaoId == myMacro()
+          && request.resource.data.macroRegiaoId == resource.data.macroRegiaoId
+          && tecnicoAllowedCadastroStatus(request.resource.data.statusCadastro)
+        )
+      );
+
+      allow delete: if isGestao() || isSupervisor();
+    }
+
+    match /diagnosticos/{beneficiarioId} {
+      allow read: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (
+          isTecnico()
+          && get(/databases/$(database)/documents/beneficiarios/$(beneficiarioId)).data.macroRegiaoId == myMacro()
+        )
+        || (
+          isAgricultor()
+          && beneficiarioId == myBeneficiarioId()
+        )
+      );
+
+      allow create, update: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (
+          isTecnico()
+          && get(/databases/$(database)/documents/beneficiarios/$(beneficiarioId)).data.macroRegiaoId == myMacro()
+        )
+      );
+
+      allow delete: if isGestao() || isSupervisor();
+    }
+
+    match /visitas_tecnicas/{visitaId} {
+      allow read: if myActive() && (
+        isEquipeInterna()
+        || (
+          isAgricultor()
+          && resource.data.beneficiario == get(/databases/$(database)/documents/beneficiarios/$(myBeneficiarioId())).data.nome
+        )
+      );
+
+      allow create, update: if myActive() && isEquipeInterna();
+
+      allow delete: if isGestao() || isSupervisor();
+    }
+
+    match /problemas_agricultor/{docId} {
+      allow read: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (
+          isTecnico()
+          && get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
+        )
+        || (
+          isAgricultor()
+          && resource.data.beneficiarioId == myBeneficiarioId()
+        )
+      );
+
+      allow create: if myActive()
+        && isAgricultor()
+        && request.resource.data.uidCriador == request.auth.uid
+        && request.resource.data.beneficiarioId == myBeneficiarioId();
+
+      allow update: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (
+          isTecnico()
+          && get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
+        )
+      );
+
+      allow delete: if false;
+    }
+
+    match /solicitacoes_visita/{docId} {
+      allow read: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (
+          isTecnico()
+          && get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
+        )
+        || (
+          isAgricultor()
+          && resource.data.beneficiarioId == myBeneficiarioId()
+        )
+      );
+
+      allow create: if myActive()
+        && isAgricultor()
+        && request.resource.data.uidCriador == request.auth.uid
+        && request.resource.data.beneficiarioId == myBeneficiarioId();
+
+      allow update: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (
+          isTecnico()
+          && get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
+        )
+      );
+
+      allow delete: if false;
+    }
+
+    match /solicitacoes_whatsapp/{docId} {
+      allow read: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (
+          isTecnico()
+          && get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
+        )
+        || (
+          isAgricultor()
+          && resource.data.beneficiarioId == myBeneficiarioId()
+        )
+      );
+
+      allow create: if myActive()
+        && isAgricultor()
+        && request.resource.data.uidCriador == request.auth.uid
+        && request.resource.data.beneficiarioId == myBeneficiarioId();
+
+      allow update: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (
+          isTecnico()
+          && get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
+        )
+      );
+
+      allow delete: if false;
+    }
+
+    match /access_logs/{logId} {
+      allow create: if myActive() && request.resource.data.uid == request.auth.uid;
+      allow read: if isGestao() || isSupervisor();
+      allow update, delete: if false;
+    }
+
+    match /arquivos_area/{docId} {
+      allow read, write: if isGestao() || isSupervisor() || isAdministrativo();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

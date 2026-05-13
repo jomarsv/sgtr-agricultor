@@ -18,6 +18,7 @@ type Problema = {
   beneficiarioId?: string;
   beneficiarioNome?: string;
   uidCriador?: string;
+  macroRegiaoId?: string;
   imagem?: string;
   nomeImagem?: string;
   video?: string;
@@ -35,6 +36,7 @@ type SolicitacaoVisita = {
   beneficiarioId?: string;
   beneficiarioNome?: string;
   uidCriador?: string;
+  macroRegiaoId?: string;
 };
 
 type SolicitacaoWhatsapp = {
@@ -46,6 +48,7 @@ type SolicitacaoWhatsapp = {
   beneficiarioId?: string;
   beneficiarioNome?: string;
   uidCriador?: string;
+  macroRegiaoId?: string;
   telefoneContato?: string;
 };
 type UsuarioAgricultor = {
@@ -600,6 +603,7 @@ export default function App() {
         beneficiarioId: usuarioSistema.beneficiarioId,
         beneficiarioNome: usuarioSistema.nome,
         uidCriador: usuarioSistema.uid,
+        macroRegiaoId: beneficiarioVinculado?.macroRegiaoId || usuarioSistema.macroRegiaoId || '',
         titulo: problemaForm.titulo,
         categoria: problemaForm.categoria,
         descricao: problemaForm.descricao || 'Relato enviado por mídia anexada.',
@@ -643,6 +647,7 @@ export default function App() {
         beneficiarioId: usuarioSistema.beneficiarioId,
         beneficiarioNome: usuarioSistema.nome,
         uidCriador: usuarioSistema.uid,
+        macroRegiaoId: beneficiarioVinculado?.macroRegiaoId || usuarioSistema.macroRegiaoId || '',
         motivo: visitaForm.motivo,
         dataPreferida: visitaForm.dataPreferida,
         turno: visitaForm.turno,
@@ -681,6 +686,7 @@ export default function App() {
         beneficiarioId: usuarioSistema.beneficiarioId,
         beneficiarioNome: usuarioSistema.nome,
         uidCriador: usuarioSistema.uid,
+        macroRegiaoId: beneficiarioVinculado?.macroRegiaoId || usuarioSistema.macroRegiaoId || '',
         motivo: visitaForm.motivo,
         observacoes: visitaForm.observacoes,
         telefoneContato: beneficiarioVinculado?.telefone || '',

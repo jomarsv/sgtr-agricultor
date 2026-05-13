@@ -153,12 +153,109 @@ service cloud.firestore {
       return status in ['pendente_validacao', 'aprovado', 'rejeitado', 'aguardando_correcao', 'inativo'];
     }
 
+    function validClientTimestamp(value) {
+      return value == request.time;
+    }
+
+    function validProblemaAgricultorCreate() {
+      return request.resource.data.uidCriador == request.auth.uid
+        && request.resource.data.beneficiarioId == myBeneficiarioId()
+        && request.resource.data.macroRegiaoId == myMacro()
+        && request.resource.data.status == 'Novo'
+        && request.resource.data.keys().hasOnly([
+          'beneficiarioId',
+          'beneficiarioNome',
+          'uidCriador',
+          'macroRegiaoId',
+          'titulo',
+          'categoria',
+          'descricao',
+          'prioridade',
+          'localizacao',
+          'data',
+          'status',
+          'imagem',
+          'nomeImagem',
+          'video',
+          'nomeVideo',
+          'createdAt'
+        ])
+        && validClientTimestamp(request.resource.data.createdAt);
+    }
+
+    function validSolicitacaoVisitaCreate() {
+      return request.resource.data.uidCriador == request.auth.uid
+        && request.resource.data.beneficiarioId == myBeneficiarioId()
+        && request.resource.data.macroRegiaoId == myMacro()
+        && request.resource.data.status == 'Solicitada'
+        && request.resource.data.keys().hasOnly([
+          'beneficiarioId',
+          'beneficiarioNome',
+          'uidCriador',
+          'macroRegiaoId',
+          'motivo',
+          'dataPreferida',
+          'turno',
+          'observacoes',
+          'status',
+          'dataSolicitacao',
+          'createdAt'
+        ])
+        && validClientTimestamp(request.resource.data.createdAt);
+    }
+
+    function validSolicitacaoWhatsappCreate() {
+      return request.resource.data.uidCriador == request.auth.uid
+        && request.resource.data.beneficiarioId == myBeneficiarioId()
+        && request.resource.data.macroRegiaoId == myMacro()
+        && request.resource.data.status == 'Solicitada'
+        && request.resource.data.keys().hasOnly([
+          'beneficiarioId',
+          'beneficiarioNome',
+          'uidCriador',
+          'macroRegiaoId',
+          'motivo',
+          'observacoes',
+          'telefoneContato',
+          'status',
+          'dataSolicitacao',
+          'createdAt'
+        ])
+        && validClientTimestamp(request.resource.data.createdAt);
+    }
+
+    function validAccessLogCreate() {
+      return request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'uid',
+          'nome',
+          'perfil',
+          'macroRegiaoId',
+          'tecnicoId',
+          'beneficiarioId',
+          'appOrigem',
+          'evento',
+          'timestamp'
+        ])
+        && request.resource.data.perfil == myProfile()
+        && request.resource.data.macroRegiaoId == myMacro()
+        && request.resource.data.beneficiarioId == myBeneficiarioId()
+        && validClientTimestamp(request.resource.data.timestamp);
+    }
+
     function canReadBeneficiario(beneficiarioId, data) {
       return isGestao()
         || isSupervisor()
         || isAdministrativo()
         || (isTecnico() && data.macroRegiaoId == myMacro())
         || (isAgricultor() && beneficiarioId == myBeneficiarioId());
+    }
+
+    function canReadVisitaTecnica(data) {
+      return isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (isTecnico() && data.tecnico == myUser().nome);
     }
 
     match /usuarios/{userId} {
@@ -245,14 +342,30 @@ service cloud.firestore {
 
     match /visitas_tecnicas/{visitaId} {
       allow read: if myActive() && (
-        isEquipeInterna()
+        canReadVisitaTecnica(resource.data)
         || (
           isAgricultor()
           && resource.data.beneficiario == get(/databases/$(database)/documents/beneficiarios/$(myBeneficiarioId())).data.nome
         )
       );
 
-      allow create, update: if myActive() && isEquipeInterna();
+      allow create: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (isTecnico() && request.resource.data.tecnico == myUser().nome)
+      );
+
+      allow update: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (
+          isTecnico()
+          && resource.data.tecnico == myUser().nome
+          && request.resource.data.tecnico == myUser().nome
+        )
+      );
 
       allow delete: if isGestao() || isSupervisor();
     }
@@ -264,7 +377,10 @@ service cloud.firestore {
         || isAdministrativo()
         || (
           isTecnico()
-          && get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
+          && (
+            resource.data.macroRegiaoId == myMacro()
+            || get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
+          )
         )
         || (
           isAgricultor()
@@ -274,8 +390,7 @@ service cloud.firestore {
 
       allow create: if myActive()
         && isAgricultor()
-        && request.resource.data.uidCriador == request.auth.uid
-        && request.resource.data.beneficiarioId == myBeneficiarioId();
+        && validProblemaAgricultorCreate();
 
       allow update: if myActive() && (
         isGestao()
@@ -283,7 +398,10 @@ service cloud.firestore {
         || isAdministrativo()
         || (
           isTecnico()
-          && get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
+          && (
+            resource.data.macroRegiaoId == myMacro()
+            || get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
+          )
         )
       );
 
@@ -297,7 +415,10 @@ service cloud.firestore {
         || isAdministrativo()
         || (
           isTecnico()
-          && get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
+          && (
+            resource.data.macroRegiaoId == myMacro()
+            || get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
+          )
         )
         || (
           isAgricultor()
@@ -307,8 +428,7 @@ service cloud.firestore {
 
       allow create: if myActive()
         && isAgricultor()
-        && request.resource.data.uidCriador == request.auth.uid
-        && request.resource.data.beneficiarioId == myBeneficiarioId();
+        && validSolicitacaoVisitaCreate();
 
       allow update: if myActive() && (
         isGestao()
@@ -316,7 +436,10 @@ service cloud.firestore {
         || isAdministrativo()
         || (
           isTecnico()
-          && get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
+          && (
+            resource.data.macroRegiaoId == myMacro()
+            || get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
+          )
         )
       );
 
@@ -330,7 +453,10 @@ service cloud.firestore {
         || isAdministrativo()
         || (
           isTecnico()
-          && get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
+          && (
+            resource.data.macroRegiaoId == myMacro()
+            || get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
+          )
         )
         || (
           isAgricultor()
@@ -340,8 +466,7 @@ service cloud.firestore {
 
       allow create: if myActive()
         && isAgricultor()
-        && request.resource.data.uidCriador == request.auth.uid
-        && request.resource.data.beneficiarioId == myBeneficiarioId();
+        && validSolicitacaoWhatsappCreate();
 
       allow update: if myActive() && (
         isGestao()
@@ -349,7 +474,10 @@ service cloud.firestore {
         || isAdministrativo()
         || (
           isTecnico()
-          && get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
+          && (
+            resource.data.macroRegiaoId == myMacro()
+            || get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
+          )
         )
       );
 
@@ -357,13 +485,15 @@ service cloud.firestore {
     }
 
     match /access_logs/{logId} {
-      allow create: if myActive() && request.resource.data.uid == request.auth.uid;
+      allow create: if myActive() && validAccessLogCreate();
       allow read: if isGestao() || isSupervisor();
       allow update, delete: if false;
     }
 
     match /arquivos_area/{docId} {
-      allow read, write: if isGestao() || isSupervisor() || isAdministrativo();
+      allow read: if isGestao() || isSupervisor() || isAdministrativo();
+      allow create, update: if isGestao() || isSupervisor() || isAdministrativo();
+      allow delete: if false;
     }
 
     match /{document=**} {

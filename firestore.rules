@@ -502,6 +502,146 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /consultas_ia_agro/{docId} {
+      allow read: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (isTecnico() && resource.data.macroRegiaoId == myMacro())
+      );
+
+      allow create: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (
+          isTecnico()
+          && request.resource.data.macroRegiaoId == myMacro()
+          && request.resource.data.tecnicoId == myTecnicoId()
+        )
+      );
+
+      allow update: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (
+          isTecnico()
+          && resource.data.macroRegiaoId == myMacro()
+          && resource.data.tecnicoId == myTecnicoId()
+          && request.resource.data.macroRegiaoId == resource.data.macroRegiaoId
+          && request.resource.data.tecnicoId == resource.data.tecnicoId
+        )
+      );
+
+      allow delete: if isGestao() || isSupervisor();
+    }
+
+    match /analises_imagem_ia/{docId} {
+      allow read: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (isTecnico() && resource.data.macroRegiaoId == myMacro())
+      );
+
+      allow create: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (
+          isTecnico()
+          && request.resource.data.macroRegiaoId == myMacro()
+          && request.resource.data.tecnicoId == myTecnicoId()
+        )
+      );
+
+      allow update: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (
+          isTecnico()
+          && resource.data.macroRegiaoId == myMacro()
+          && resource.data.tecnicoId == myTecnicoId()
+          && request.resource.data.macroRegiaoId == resource.data.macroRegiaoId
+          && request.resource.data.tecnicoId == resource.data.tecnicoId
+        )
+      );
+
+      allow delete: if isGestao() || isSupervisor();
+    }
+
+    match /historico_orientacoes_ia/{docId} {
+      allow read: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (isTecnico() && resource.data.macroRegiaoId == myMacro())
+      );
+
+      allow create: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (
+          isTecnico()
+          && request.resource.data.macroRegiaoId == myMacro()
+          && request.resource.data.tecnicoId == myTecnicoId()
+        )
+      );
+
+      allow update: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (
+          isTecnico()
+          && resource.data.macroRegiaoId == myMacro()
+          && resource.data.tecnicoId == myTecnicoId()
+          && request.resource.data.macroRegiaoId == resource.data.macroRegiaoId
+          && request.resource.data.tecnicoId == resource.data.tecnicoId
+        )
+      );
+
+      allow delete: if isGestao() || isSupervisor();
+    }
+
+    match /respostas_aprovadas_ia/{docId} {
+      allow read: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (isTecnico() && resource.data.macroRegiaoId == myMacro())
+      );
+
+      allow create: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (
+          isTecnico()
+          && request.resource.data.macroRegiaoId == myMacro()
+          && request.resource.data.criadoPorUid == request.auth.uid
+        )
+      );
+
+      allow update: if myActive() && (
+        isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (
+          isTecnico()
+          && resource.data.macroRegiaoId == myMacro()
+          && resource.data.criadoPorUid == request.auth.uid
+          && request.resource.data.macroRegiaoId == resource.data.macroRegiaoId
+          && request.resource.data.criadoPorUid == resource.data.criadoPorUid
+        )
+      );
+
+      allow delete: if isGestao() || isSupervisor();
+    }
+
     match /access_logs/{logId} {
       allow create: if myActive() && validAccessLogCreate();
       allow read: if isGestao() || isSupervisor();

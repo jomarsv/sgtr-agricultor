@@ -261,10 +261,7 @@ service cloud.firestore {
         || isAdministrativo()
         || (
           isTecnico()
-          && (
-            data.tecnicoId == myTecnicoId()
-            || data.tecnico == myUser().nome
-          )
+          && data.tecnicoId == myTecnicoId()
         );
     }
 
@@ -282,7 +279,6 @@ service cloud.firestore {
           && (
             data.macroRegiaoId == myMacro()
             || data.tecnicoId == myTecnicoId()
-            || get(/databases/$(database)/documents/beneficiarios/$(beneficiarioId)).data.macroRegiaoId == myMacro()
           )
         )
         || (
@@ -373,7 +369,6 @@ service cloud.firestore {
           && (
             resource.data.tecnicoId == myTecnicoId()
             || resource.data.macroRegiaoId == myMacro()
-            || get(/databases/$(database)/documents/beneficiarios/$(beneficiarioId)).data.macroRegiaoId == myMacro()
           )
         )
       );
@@ -386,7 +381,7 @@ service cloud.firestore {
         canReadVisitaTecnica(resource.data)
         || (
           isAgricultor()
-          && resource.data.beneficiario == get(/databases/$(database)/documents/beneficiarios/$(myBeneficiarioId())).data.nome
+          && resource.data.beneficiarioId == myBeneficiarioId()
         )
       );
 
@@ -394,7 +389,7 @@ service cloud.firestore {
         isGestao()
         || isSupervisor()
         || isAdministrativo()
-        || (isTecnico() && tecnicoOwnVisitaWrite() && request.resource.data.tecnico == myUser().nome)
+        || (isTecnico() && tecnicoOwnVisitaWrite())
       );
 
       allow update: if myActive() && (
@@ -403,12 +398,8 @@ service cloud.firestore {
         || isAdministrativo()
         || (
           isTecnico()
-          && (
-            resource.data.tecnicoId == myTecnicoId()
-            || resource.data.tecnico == myUser().nome
-          )
+          && resource.data.tecnicoId == myTecnicoId()
           && tecnicoOwnVisitaWrite()
-          && request.resource.data.tecnico == myUser().nome
         )
       );
 
@@ -422,10 +413,7 @@ service cloud.firestore {
         || isAdministrativo()
         || (
           isTecnico()
-          && (
-            resource.data.macroRegiaoId == myMacro()
-            || get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
-          )
+          && resource.data.macroRegiaoId == myMacro()
         )
         || (
           isAgricultor()
@@ -443,10 +431,7 @@ service cloud.firestore {
         || isAdministrativo()
         || (
           isTecnico()
-          && (
-            resource.data.macroRegiaoId == myMacro()
-            || get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
-          )
+          && resource.data.macroRegiaoId == myMacro()
         )
       );
 
@@ -460,10 +445,7 @@ service cloud.firestore {
         || isAdministrativo()
         || (
           isTecnico()
-          && (
-            resource.data.macroRegiaoId == myMacro()
-            || get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
-          )
+          && resource.data.macroRegiaoId == myMacro()
         )
         || (
           isAgricultor()
@@ -481,10 +463,7 @@ service cloud.firestore {
         || isAdministrativo()
         || (
           isTecnico()
-          && (
-            resource.data.macroRegiaoId == myMacro()
-            || get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
-          )
+          && resource.data.macroRegiaoId == myMacro()
         )
       );
 
@@ -498,10 +477,7 @@ service cloud.firestore {
         || isAdministrativo()
         || (
           isTecnico()
-          && (
-            resource.data.macroRegiaoId == myMacro()
-            || get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
-          )
+          && resource.data.macroRegiaoId == myMacro()
         )
         || (
           isAgricultor()
@@ -519,10 +495,7 @@ service cloud.firestore {
         || isAdministrativo()
         || (
           isTecnico()
-          && (
-            resource.data.macroRegiaoId == myMacro()
-            || get(/databases/$(database)/documents/beneficiarios/$(resource.data.beneficiarioId)).data.macroRegiaoId == myMacro()
-          )
+          && resource.data.macroRegiaoId == myMacro()
         )
       );
 

@@ -45,6 +45,10 @@ service cloud.firestore {
       return myUserExists() ? myUser().macroRegiaoId : null;
     }
 
+    function myTecnicoId() {
+      return myUserExists() ? myUser().tecnicoId : null;
+    }
+
     function myBeneficiarioId() {
       return myUserExists() ? myUser().beneficiarioId : null;
     }
@@ -255,7 +259,41 @@ service cloud.firestore {
       return isGestao()
         || isSupervisor()
         || isAdministrativo()
-        || (isTecnico() && data.tecnico == myUser().nome);
+        || (
+          isTecnico()
+          && (
+            data.tecnicoId == myTecnicoId()
+            || data.tecnico == myUser().nome
+          )
+        );
+    }
+
+    function tecnicoOwnVisitaWrite() {
+      return request.resource.data.tecnicoId == myTecnicoId()
+        && request.resource.data.macroRegiaoId == myMacro();
+    }
+
+    function canReadDiagnostico(data, beneficiarioId) {
+      return isGestao()
+        || isSupervisor()
+        || isAdministrativo()
+        || (
+          isTecnico()
+          && (
+            data.macroRegiaoId == myMacro()
+            || data.tecnicoId == myTecnicoId()
+            || get(/databases/$(database)/documents/beneficiarios/$(beneficiarioId)).data.macroRegiaoId == myMacro()
+          )
+        )
+        || (
+          isAgricultor()
+          && beneficiarioId == myBeneficiarioId()
+        );
+    }
+
+    function tecnicoOwnDiagnosticoWrite(data) {
+      return data.macroRegiaoId == myMacro()
+        && data.tecnicoId == myTecnicoId();
     }
 
     match /usuarios/{userId} {
@@ -313,27 +351,30 @@ service cloud.firestore {
     }
 
     match /diagnosticos/{beneficiarioId} {
-      allow read: if myActive() && (
+      allow read: if myActive() && canReadDiagnostico(resource.data, beneficiarioId);
+
+      allow create: if myActive() && (
         isGestao()
         || isSupervisor()
         || isAdministrativo()
         || (
           isTecnico()
-          && get(/databases/$(database)/documents/beneficiarios/$(beneficiarioId)).data.macroRegiaoId == myMacro()
-        )
-        || (
-          isAgricultor()
-          && beneficiarioId == myBeneficiarioId()
+          && tecnicoOwnDiagnosticoWrite(request.resource.data)
         )
       );
 
-      allow create, update: if myActive() && (
+      allow update: if myActive() && (
         isGestao()
         || isSupervisor()
         || isAdministrativo()
         || (
           isTecnico()
-          && get(/databases/$(database)/documents/beneficiarios/$(beneficiarioId)).data.macroRegiaoId == myMacro()
+          && tecnicoOwnDiagnosticoWrite(request.resource.data)
+          && (
+            resource.data.tecnicoId == myTecnicoId()
+            || resource.data.macroRegiaoId == myMacro()
+            || get(/databases/$(database)/documents/beneficiarios/$(beneficiarioId)).data.macroRegiaoId == myMacro()
+          )
         )
       );
 
@@ -353,7 +394,7 @@ service cloud.firestore {
         isGestao()
         || isSupervisor()
         || isAdministrativo()
-        || (isTecnico() && request.resource.data.tecnico == myUser().nome)
+        || (isTecnico() && tecnicoOwnVisitaWrite() && request.resource.data.tecnico == myUser().nome)
       );
 
       allow update: if myActive() && (
@@ -362,7 +403,11 @@ service cloud.firestore {
         || isAdministrativo()
         || (
           isTecnico()
-          && resource.data.tecnico == myUser().nome
+          && (
+            resource.data.tecnicoId == myTecnicoId()
+            || resource.data.tecnico == myUser().nome
+          )
+          && tecnicoOwnVisitaWrite()
           && request.resource.data.tecnico == myUser().nome
         )
       );

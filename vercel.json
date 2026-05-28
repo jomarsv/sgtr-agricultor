@@ -1,0 +1,9 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/agricultor/bulletin",
+      "destination": "https://sgtr-goes-ambiental.vercel.app/api/environmental-bulletins/latest"
+    }
+  ]
+}
+

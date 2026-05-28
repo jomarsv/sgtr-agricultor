@@ -5,7 +5,7 @@ import { auth, db } from './firebase';
 import { AgricultorBulletinPanel } from './components/AgricultorBulletinPanel';
 import { uploadArquivo } from './services/upload';
 
-type TelaKey = 'inicio' | 'problemas' | 'visitas' | 'locktec' | 'status' | 'perfil' | 'privacidade';
+type TelaKey = 'inicio' | 'boletim' | 'problemas' | 'visitas' | 'locktec' | 'status' | 'perfil' | 'privacidade';
 
 type Problema = {
   id: string;
@@ -238,7 +238,7 @@ function traduzirErroFirestore(error: any) {
 }
 
 export default function App() {
-  const [active, setActive] = useState<TelaKey>('visitas');
+  const [active, setActive] = useState<TelaKey>('boletim');
   const [usuarioSistema, setUsuarioSistema] = useState<UsuarioAgricultor | null>(null);
   const [beneficiarioVinculado, setBeneficiarioVinculado] = useState<BeneficiarioVinculado | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -792,6 +792,7 @@ export default function App() {
           <div style={{ display: 'grid', gap: 8 }}>
             {[
               ['inicio', 'Início'],
+              ['boletim', 'Boletim'],
               ['problemas', 'Relatar problema'],
               ['visitas', 'Solicitar visita'],
               ['locktec', 'LockTec'],
@@ -844,7 +845,6 @@ export default function App() {
         </div>
 
         <div style={{ display: 'grid', gap: 20 }}>
-          <AgricultorBulletinPanel />
           {bloqueioOperacional && (
             <div style={{ ...cardStyle(), border: '1px solid #f2e7c1', background: '#fffaf0' }}>
               <h2 style={{ marginTop: 0, color: colors.text }}>Atenção ao cadastro</h2>
@@ -863,6 +863,12 @@ export default function App() {
               <div style={{ marginTop: 14, maxWidth: 240 }}>
                 <ActionButton text="Ler política resumida" onClick={() => setActive('privacidade')} secondary />
               </div>
+            </div>
+          )}
+
+          {active === 'boletim' && (
+            <div style={cardStyle()}>
+              <AgricultorBulletinPanel />
             </div>
           )}
 

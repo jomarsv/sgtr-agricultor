@@ -82,6 +82,7 @@ type BeneficiarioVinculado = {
 
 const JARILO_URL = 'https://www.jarilo.com.br/questions/question/3d1a5e16-c489-4819-925e-89e45c32425c/details';
 const LGPD_CONSENTIMENTO_VERSAO = '2026-04-08-oferta-demanda';
+const BRAZIL_TIME_ZONE = 'America/Fortaleza';
 
 const colors = {
   bg: '#eef4ea',
@@ -96,6 +97,37 @@ const colors = {
   card: '#ffffff',
   chip: '#f6f1e7'
 };
+
+function getBrazilTodayIso() {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: BRAZIL_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  return formatter.format(new Date());
+}
+
+function parseIsoDateParts(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  return {
+    ano: Number(match[1]),
+    mes: Number(match[2]),
+    dia: Number(match[3])
+  };
+}
+
+function isPastBrazilDate(value: string) {
+  return Boolean(value) && value < getBrazilTodayIso();
+}
+
+function formatPreferredDate(value?: string) {
+  if (!value) return '-';
+  const parts = parseIsoDateParts(value);
+  if (!parts) return value;
+  return `${String(parts.dia).padStart(2, '0')}/${String(parts.mes).padStart(2, '0')}/${parts.ano}`;
+}
 
 function cardStyle(extra?: React.CSSProperties): React.CSSProperties {
   return {
@@ -121,7 +153,7 @@ function Badge({ text, tone = 'default' }: { text: string; tone?: 'default' | 's
   return <span style={{ display: 'inline-block', padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, background, color }}>{text}</span>;
 }
 
-function Input({ label, value, onChange, placeholder, type = 'text' }: { label: string; value: string; onChange: (v: string) => void; placeholder: string; type?: string }) {
+function Input({ label, value, onChange, placeholder, type = 'text', min }: { label: string; value: string; onChange: (v: string) => void; placeholder: string; type?: string; min?: string }) {
   return (
     <div>
       <div style={{ fontSize: 13, fontWeight: 700, color: colors.muted, marginBottom: 6 }}>{label}</div>
@@ -130,6 +162,7 @@ function Input({ label, value, onChange, placeholder, type = 'text' }: { label: 
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        min={min}
         style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${colors.border}`, borderRadius: 16, padding: '14px 16px', fontSize: 14, background: '#fff', color: colors.text, outline: 'none' }}
       />
     </div>
@@ -638,6 +671,17 @@ export default function App() {
       return;
     }
 
+    const dataParts = parseIsoDateParts(visitaForm.dataPreferida);
+    if (!dataParts) {
+      setMsgVisita('Selecione uma data de visita válida.');
+      return;
+    }
+
+    if (isPastBrazilDate(visitaForm.dataPreferida)) {
+      setMsgVisita('Não é permitido agendar visitas em datas passadas.');
+      return;
+    }
+
     if (!usuarioSistema?.beneficiarioId) {
       setMsgVisita('Seu cadastro ainda não está vinculado corretamente. Procure a equipe da SAF.');
       return;
@@ -651,6 +695,9 @@ export default function App() {
         macroRegiaoId: beneficiarioVinculado?.macroRegiaoId || usuarioSistema.macroRegiaoId || '',
         motivo: visitaForm.motivo,
         dataPreferida: visitaForm.dataPreferida,
+        dataPreferidaAno: dataParts.ano,
+        dataPreferidaMes: dataParts.mes,
+        dataPreferidaDia: dataParts.dia,
         turno: visitaForm.turno,
         observacoes: visitaForm.observacoes,
         status: 'Solicitada',
@@ -662,6 +709,10 @@ export default function App() {
       setMsgVisita('Solicitação enviada ao Firestore com sucesso.');
     } catch (error: any) {
       console.error(error);
+      if (error?.code === 'permission-denied' || error?.code === 'firestore/permission-denied') {
+        setMsgVisita('O Firebase rejeitou a solicitação. Verifique se a data escolhida não está no passado.');
+        return;
+      }
       setMsgVisita(traduzirErroFirestore(error));
     }
   }
@@ -709,6 +760,7 @@ export default function App() {
   const statusCadastroBeneficiario = beneficiarioVinculado?.statusCadastro;
   const bloqueioOperacional = bloquearInteracaoAgricultor(statusCadastroBeneficiario);
   const mensagemStatusCadastro = descricaoStatusCadastro(statusCadastroBeneficiario);
+  const dataMinimaVisita = getBrazilTodayIso();
   const consentimentoLGPDAtivo = Boolean(
     usuarioSistema?.lgpdConsentimentoAppsMesmoControlador
     && usuarioSistema?.lgpdConsentimentoAppsMesmoControladorVersao === LGPD_CONSENTIMENTO_VERSAO
@@ -901,7 +953,15 @@ export default function App() {
                 <div style={{ display: 'grid', gap: 16, marginTop: 22 }}>
                   {bloqueioOperacional && <div style={{ color: '#8a5a1d', fontSize: 14, background: '#f2e7c1', borderRadius: 16, padding: 14 }}>{mensagemStatusCadastro}</div>}
                   <Input label="Motivo da visita" value={visitaForm.motivo} onChange={(v) => setVisitaForm((p) => ({ ...p, motivo: v }))} placeholder="Ex.: controle de pragas, manejo, solo" />
-                  <Input label="Data preferida" value={visitaForm.dataPreferida} onChange={(v) => setVisitaForm((p) => ({ ...p, dataPreferida: v }))} placeholder="DD/MM/AAAA" />
+                  <Input
+                    label="Data preferida"
+                    value={visitaForm.dataPreferida}
+                    onChange={(v) => setVisitaForm((p) => ({ ...p, dataPreferida: v }))}
+                    placeholder="Selecione a data"
+                    type="date"
+                    min={dataMinimaVisita}
+                  />
+                  <div style={{ marginTop: -6, fontSize: 12, color: colors.muted }}>Datas anteriores ao dia atual ficam bloqueadas automaticamente.</div>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: colors.muted, marginBottom: 6 }}>Turno</div>
                     <select value={visitaForm.turno} onChange={(e) => setVisitaForm((p) => ({ ...p, turno: e.target.value }))} style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${colors.border}`, borderRadius: 16, padding: '14px 16px', fontSize: 14, background: '#fff', color: colors.text, outline: 'none' }}>
@@ -932,7 +992,7 @@ export default function App() {
                             <div style={{ fontWeight: 700, color: colors.text, fontSize: 17 }}>{item.motivo}</div>
                             <Badge text={item.status} tone={item.status === 'Atendida' ? 'success' : 'default'} />
                           </div>
-                          <div style={{ marginTop: 12, color: colors.muted, fontSize: 14 }}>Data preferida: {item.dataPreferida} • {item.turno}</div>
+                          <div style={{ marginTop: 12, color: colors.muted, fontSize: 14 }}>Data preferida: {formatPreferredDate(item.dataPreferida)} • {item.turno}</div>
                           <div style={{ marginTop: 8, color: colors.muted, fontSize: 14 }}>{item.observacoes}</div>
                           <div style={{ marginTop: 12 }}>
                             <Badge text={`Solicitada em ${item.dataSolicitacao}`} tone="success" />

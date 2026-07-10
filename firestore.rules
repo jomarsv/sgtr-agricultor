@@ -161,6 +161,78 @@ service cloud.firestore {
       return value == request.time;
     }
 
+    function isLeapYear(year) {
+      return year % 400 == 0 || (year % 4 == 0 && !(year % 100 == 0));
+    }
+
+    function daysInMonth(year, month) {
+      return month == 1 ? 31
+        : month == 2 ? (isLeapYear(year) ? 29 : 28)
+        : month == 3 ? 31
+        : month == 4 ? 30
+        : month == 5 ? 31
+        : month == 6 ? 30
+        : month == 7 ? 31
+        : month == 8 ? 31
+        : month == 9 ? 30
+        : month == 10 ? 31
+        : month == 11 ? 30
+        : month == 12 ? 31
+        : 0;
+    }
+
+    function validVisitDateParts(year, month, day) {
+      return month >= 1
+        && month <= 12
+        && day >= 1
+        && day <= daysInMonth(year, month);
+    }
+
+    function dayOfYearFromParts(year, month, day) {
+      return day
+        + (month > 1 ? 31 : 0)
+        + (month > 2 ? (isLeapYear(year) ? 29 : 28) : 0)
+        + (month > 3 ? 31 : 0)
+        + (month > 4 ? 30 : 0)
+        + (month > 5 ? 31 : 0)
+        + (month > 6 ? 30 : 0)
+        + (month > 7 ? 31 : 0)
+        + (month > 8 ? 31 : 0)
+        + (month > 9 ? 30 : 0)
+        + (month > 10 ? 31 : 0)
+        + (month > 11 ? 30 : 0);
+    }
+
+    function currentBrazilYear() {
+      return request.time.hours() >= 3
+        ? request.time.year()
+        : (request.time.dayOfYear() > 1 ? request.time.year() : request.time.year() - 1);
+    }
+
+    function currentBrazilDayOfYear() {
+      return request.time.hours() >= 3
+        ? request.time.dayOfYear()
+        : (
+          request.time.dayOfYear() > 1
+            ? request.time.dayOfYear() - 1
+            : (isLeapYear(request.time.year() - 1) ? 366 : 365)
+        );
+    }
+
+    function visitDateIsTodayOrFutureInBrazil() {
+      let year = request.resource.data.dataPreferidaAno;
+      let month = request.resource.data.dataPreferidaMes;
+      let day = request.resource.data.dataPreferidaDia;
+      let visitDayOfYear = dayOfYearFromParts(year, month, day);
+      let brazilYear = currentBrazilYear();
+      let brazilDayOfYear = currentBrazilDayOfYear();
+      return validVisitDateParts(year, month, day)
+        && (
+          year > brazilYear
+          || (year == brazilYear && visitDayOfYear >= brazilDayOfYear)
+        );
+    }
+
     function validProblemaAgricultorCreate() {
       return request.resource.data.uidCriador == request.auth.uid
         && request.resource.data.beneficiarioId == myBeneficiarioId()
@@ -199,12 +271,16 @@ service cloud.firestore {
           'macroRegiaoId',
           'motivo',
           'dataPreferida',
+          'dataPreferidaAno',
+          'dataPreferidaMes',
+          'dataPreferidaDia',
           'turno',
           'observacoes',
           'status',
           'dataSolicitacao',
           'createdAt'
         ])
+        && visitDateIsTodayOrFutureInBrazil()
         && validClientTimestamp(request.resource.data.createdAt);
     }
 

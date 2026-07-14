@@ -112,22 +112,17 @@ function ActionButton({
 }
 
 export function Login() {
-  const { authLoading, loginMsg, realizarLogin, solicitarResetSenha } = useAuth();
+  const { authLoading, loginMsg, realizarLogin } = useAuth();
   const [loginForm, setLoginForm] = useState({ cpf: '', senha: '' });
   const [resetMsg, setResetMsg] = useState('');
-  const [resetLoading, setResetLoading] = useState(false);
 
   async function handleLogin() {
     setResetMsg('');
     await realizarLogin(loginForm.cpf, loginForm.senha);
   }
 
-  async function handleResetSenha() {
-    setResetLoading(true);
-    setResetMsg('');
-    const message = await solicitarResetSenha(loginForm.cpf);
-    setResetMsg(message);
-    setResetLoading(false);
+  function handleOrientacaoSenha() {
+    setResetMsg('Para redefinir a senha do acesso por CPF, procure a equipe SAF ou o técnico responsável. Esse app não envia recuperação por e-mail para o agricultor.');
   }
 
   const feedbackMsg = resetMsg || loginMsg;
@@ -170,10 +165,10 @@ export function Login() {
           />
           <ActionButton text={authLoading ? 'Entrando...' : 'Entrar'} onClick={handleLogin} disabled={authLoading} />
           <ActionButton
-            text={resetLoading ? 'Enviando...' : 'Esqueci minha senha'}
-            onClick={handleResetSenha}
+            text="Preciso redefinir minha senha"
+            onClick={handleOrientacaoSenha}
             secondary
-            disabled={authLoading || resetLoading}
+            disabled={authLoading}
           />
         </div>
 

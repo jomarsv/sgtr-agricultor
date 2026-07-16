@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { addDoc, collection, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { auth, db } from './firebase';
+import { addDoc, collection, doc, onSnapshot, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
+import { db } from './firebase';
 import { AgricultorBulletinPanel } from './components/AgricultorBulletinPanel';
 import { uploadArquivo } from './services/upload';
+import { useAuth } from './contexts/AuthContext';
+import { Login } from './pages/Login';
+import { cpfParaEmailInterno, formatarCpf } from './utils/auth';
 
 type TelaKey = 'inicio' | 'boletim' | 'problemas' | 'visitas' | 'locktec' | 'status' | 'perfil' | 'privacidade';
 
@@ -52,21 +54,6 @@ type SolicitacaoWhatsapp = {
   macroRegiaoId?: string;
   telefoneContato?: string;
 };
-type UsuarioAgricultor = {
-  uid: string;
-  nome: string;
-  perfil: 'agricultor';
-  cpf?: string;
-  cpfMasked?: string;
-  beneficiarioId?: string;
-  macroRegiaoId?: string;
-  lgpdConsentimentoAppsMesmoControlador?: boolean;
-  lgpdConsentimentoAppsMesmoControladorEm?: any;
-  lgpdConsentimentoAppsMesmoControladorVersao?: string;
-  ativo: boolean;
-  ultimoLoginEm?: any;
-};
-
 type BeneficiarioVinculado = {
   id: string;
   nome: string;
@@ -217,20 +204,6 @@ function ProblemVideo({ src, fileName }: { src?: string; fileName?: string }) {
   );
 }
 
-function formatarCpf(valor: string) {
-  const numeros = valor.replace(/\D/g, '').slice(0, 11);
-  if (!numeros) return '';
-  if (numeros.length <= 3) return numeros;
-  if (numeros.length <= 6) return `${numeros.slice(0, 3)}.${numeros.slice(3)}`;
-  if (numeros.length <= 9) return `${numeros.slice(0, 3)}.${numeros.slice(3, 6)}.${numeros.slice(6)}`;
-  return `${numeros.slice(0, 3)}.${numeros.slice(3, 6)}.${numeros.slice(6, 9)}-${numeros.slice(9)}`;
-}
-
-function cpfParaEmailInterno(cpfFormatado: string) {
-  const numeros = cpfFormatado.replace(/\D/g, '');
-  return `${numeros}@sgtr.app`;
-}
-
 function descricaoStatusCadastro(status?: BeneficiarioVinculado['statusCadastro']) {
   switch (status) {
     case 'aprovado':
@@ -271,12 +244,9 @@ function traduzirErroFirestore(error: any) {
 }
 
 export default function App() {
+  const { usuarioSistema, authLoading, sairDoSistema, atualizarUsuarioSistema } = useAuth();
   const [active, setActive] = useState<TelaKey>('boletim');
-  const [usuarioSistema, setUsuarioSistema] = useState<UsuarioAgricultor | null>(null);
   const [beneficiarioVinculado, setBeneficiarioVinculado] = useState<BeneficiarioVinculado | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [loginForm, setLoginForm] = useState({ cpf: '', senha: '' });
-  const [loginMsg, setLoginMsg] = useState('');
   const [problemas, setProblemas] = useState<Problema[]>([]);
   const [solicitacoes, setSolicitacoes] = useState<SolicitacaoVisita[]>([]);
   const [solicitacoesWhatsapp, setSolicitacoesWhatsapp] = useState<SolicitacaoWhatsapp[]>([]);
@@ -313,215 +283,101 @@ export default function App() {
 
   const isMobile = typeof window !== 'undefined' ? window.innerWidth < 960 : false;
 
+  const beneficiarioId = usuarioSistema?.beneficiarioId;
+
   useEffect(() => {
     let unsubProblemas: (() => void) | undefined;
     let unsubSolicitacoes: (() => void) | undefined;
     let unsubSolicitacoesWhatsapp: (() => void) | undefined;
     let unsubBeneficiario: (() => void) | undefined;
 
-    const startRealtime = (beneficiarioId: string) => {
-      unsubBeneficiario = onSnapshot(
-        doc(db, 'beneficiarios', beneficiarioId),
-        (snapshot) => {
-          if (!snapshot.exists()) {
-            setBeneficiarioVinculado(null);
-            setFirebaseStatus('erro');
-            setFirebaseMsg('Beneficiário vinculado não encontrado na base.');
-            return;
-          }
-          setBeneficiarioVinculado({ id: snapshot.id, ...snapshot.data() } as BeneficiarioVinculado);
-        },
-        (error) => {
-          console.error(error);
+    if (!beneficiarioId) {
+      setBeneficiarioVinculado(null);
+      setProblemas([]);
+      setSolicitacoes([]);
+      setSolicitacoesWhatsapp([]);
+      setFirebaseStatus('conectando');
+      setFirebaseMsg('Faça login com CPF e senha para acessar o app.');
+      return;
+    }
+
+    setFirebaseStatus('conectando');
+    setFirebaseMsg('Conectado. Iniciando sincronização em tempo real...');
+
+    unsubBeneficiario = onSnapshot(
+      doc(db, 'beneficiarios', beneficiarioId),
+      (snapshot) => {
+        if (!snapshot.exists()) {
           setBeneficiarioVinculado(null);
-        }
-      );
-
-      unsubProblemas = onSnapshot(
-        collection(db, 'problemas_agricultor'),
-        (snapshot) => {
-          const lista = snapshot.docs
-            .map((item) => ({ id: item.id, ...item.data() } as Problema))
-            .filter((item) => item.beneficiarioId === beneficiarioId);
-          setProblemas(lista.sort((a, b) => String(b.data || '').localeCompare(String(a.data || ''))));
-          setFirebaseStatus('online');
-          setFirebaseMsg('Problemas sincronizados em tempo real com o Firestore.');
-        },
-        (error) => {
-          console.error(error);
           setFirebaseStatus('erro');
-          setFirebaseMsg('Falha ao ler problemas no Firestore.');
-        }
-      );
-
-      unsubSolicitacoes = onSnapshot(
-        collection(db, 'solicitacoes_visita'),
-        (snapshot) => {
-          const lista = snapshot.docs
-            .map((item) => ({ id: item.id, ...item.data() } as SolicitacaoVisita))
-            .filter((item) => item.beneficiarioId === beneficiarioId);
-          setSolicitacoes(lista.sort((a, b) => String(b.dataSolicitacao || '').localeCompare(String(a.dataSolicitacao || ''))));
-          setFirebaseStatus('online');
-          setFirebaseMsg('Solicitações de visita sincronizadas em tempo real com o Firestore.');
-        },
-        (error) => {
-          console.error(error);
-          setFirebaseStatus('erro');
-          setFirebaseMsg('Falha ao ler solicitações de visita no Firestore.');
-        }
-      );
-
-      unsubSolicitacoesWhatsapp = onSnapshot(
-        collection(db, 'solicitacoes_whatsapp'),
-        (snapshot) => {
-          const lista = snapshot.docs
-            .map((item) => ({ id: item.id, ...item.data() } as SolicitacaoWhatsapp))
-            .filter((item) => item.beneficiarioId === beneficiarioId);
-          setSolicitacoesWhatsapp(lista.sort((a, b) => String(b.dataSolicitacao || '').localeCompare(String(a.dataSolicitacao || ''))));
-        },
-        (error) => {
-          console.error(error);
-          setSolicitacoesWhatsapp([]);
-        }
-      );
-    };
-
-    const unsubAuth = onAuthStateChanged(auth, async (user) => {
-      unsubProblemas?.();
-      unsubSolicitacoes?.();
-      unsubSolicitacoesWhatsapp?.();
-      unsubBeneficiario?.();
-
-      if (!user) {
-        setUsuarioSistema(null);
-        setBeneficiarioVinculado(null);
-        setProblemas([]);
-        setSolicitacoes([]);
-        setSolicitacoesWhatsapp([]);
-        setAuthLoading(false);
-        setFirebaseStatus('conectando');
-        setFirebaseMsg('Faça login com CPF e senha para acessar o app.');
-        return;
-      }
-
-      try {
-        setAuthLoading(true);
-        const userRef = doc(db, 'usuarios', user.uid);
-        const userSnap = await getDoc(userRef);
-
-        if (!userSnap.exists()) {
-          await signOut(auth);
-          setLoginMsg('Usuário autenticado, mas não encontrado na base do sistema.');
-          setFirebaseStatus('erro');
-          setFirebaseMsg('Cadastro do usuário não encontrado.');
+          setFirebaseMsg('Beneficiário vinculado não encontrado na base.');
           return;
         }
-
-        const userData = { uid: user.uid, ...userSnap.data() } as UsuarioAgricultor;
-
-        if (!userData.ativo) {
-          await signOut(auth);
-          setLoginMsg('Seu acesso está inativo no sistema.');
-          setFirebaseStatus('erro');
-          setFirebaseMsg('Usuário inativo.');
-          return;
-        }
-
-        if (userData.perfil !== 'agricultor') {
-          await signOut(auth);
-          setLoginMsg('Este acesso não pertence ao app agricultor.');
-          setFirebaseStatus('erro');
-          setFirebaseMsg('Perfil inválido para este app.');
-          return;
-        }
-
-        if (!userData.beneficiarioId) {
-          await signOut(auth);
-          setLoginMsg('Seu cadastro ainda não está vinculado a um beneficiário.');
-          setFirebaseStatus('erro');
-          setFirebaseMsg('Beneficiário não vinculado ao usuário.');
-          return;
-        }
-
-        setUsuarioSistema(userData);
-        setFirebaseStatus('conectando');
-        setFirebaseMsg('Conectado. Iniciando sincronização em tempo real...');
-
-        await addDoc(collection(db, 'access_logs'), {
-          uid: userData.uid,
-          nome: userData.nome,
-          perfil: userData.perfil,
-          macroRegiaoId: userData.macroRegiaoId || null,
-          tecnicoId: null,
-          beneficiarioId: userData.beneficiarioId,
-          appOrigem: 'app-agricultor',
-          evento: 'login',
-          timestamp: serverTimestamp()
-        });
-
-        await setDoc(doc(db, 'usuarios', userData.uid), { ultimoLoginEm: serverTimestamp() }, { merge: true });
-
-        startRealtime(userData.beneficiarioId);
-        setLoginMsg('');
-      } catch (error: any) {
+        setBeneficiarioVinculado({ id: snapshot.id, ...snapshot.data() } as BeneficiarioVinculado);
+      },
+      (error) => {
         console.error(error);
-        setUsuarioSistema(null);
         setBeneficiarioVinculado(null);
-        setProblemas([]);
-        setSolicitacoes([]);
-        setFirebaseStatus('erro');
-        setFirebaseMsg(`Erro Firebase: ${error?.code || 'desconhecido'} - ${error?.message || ''}`);
-        setLoginMsg(error?.message || 'Falha ao iniciar sessão.');
-      } finally {
-        setAuthLoading(false);
       }
-    });
+    );
+
+    unsubProblemas = onSnapshot(
+      query(collection(db, 'problemas_agricultor'), where('beneficiarioId', '==', beneficiarioId)),
+      (snapshot) => {
+        const lista = snapshot.docs
+          .map((item) => ({ id: item.id, ...item.data() } as Problema));
+        setProblemas(lista.sort((a, b) => String(b.data || '').localeCompare(String(a.data || ''))));
+        setFirebaseStatus('online');
+        setFirebaseMsg('Problemas sincronizados em tempo real com o Firestore.');
+      },
+      (error) => {
+        console.error(error);
+        setFirebaseStatus('erro');
+        setFirebaseMsg('Falha ao ler problemas no Firestore.');
+      }
+    );
+
+    unsubSolicitacoes = onSnapshot(
+      query(collection(db, 'solicitacoes_visita'), where('beneficiarioId', '==', beneficiarioId)),
+      (snapshot) => {
+        const lista = snapshot.docs
+          .map((item) => ({ id: item.id, ...item.data() } as SolicitacaoVisita));
+        setSolicitacoes(lista.sort((a, b) => String(b.dataSolicitacao || '').localeCompare(String(a.dataSolicitacao || ''))));
+        setFirebaseStatus('online');
+        setFirebaseMsg('Solicitações de visita sincronizadas em tempo real com o Firestore.');
+      },
+      (error) => {
+        console.error(error);
+        setFirebaseStatus('erro');
+        setFirebaseMsg('Falha ao ler solicitações de visita no Firestore.');
+      }
+    );
+
+    unsubSolicitacoesWhatsapp = onSnapshot(
+      query(collection(db, 'solicitacoes_whatsapp'), where('beneficiarioId', '==', beneficiarioId)),
+      (snapshot) => {
+        const lista = snapshot.docs
+          .map((item) => ({ id: item.id, ...item.data() } as SolicitacaoWhatsapp));
+        setSolicitacoesWhatsapp(lista.sort((a, b) => String(b.dataSolicitacao || '').localeCompare(String(a.dataSolicitacao || ''))));
+      },
+      (error) => {
+        console.error(error);
+        setSolicitacoesWhatsapp([]);
+      }
+    );
 
     return () => {
-      unsubAuth();
       unsubProblemas?.();
       unsubSolicitacoes?.();
       unsubSolicitacoesWhatsapp?.();
       unsubBeneficiario?.();
     };
-  }, []);
+  }, [beneficiarioId]);
 
   useEffect(() => {
     setLgpdConsentChecked(Boolean(usuarioSistema?.lgpdConsentimentoAppsMesmoControlador));
     setLgpdConsentMsg('');
   }, [usuarioSistema]);
-
-  async function realizarLogin() {
-    const cpfLimpo = loginForm.cpf.replace(/\D/g, '');
-
-    if (cpfLimpo.length !== 11 || !loginForm.senha) {
-      setLoginMsg('Informe CPF e senha para entrar.');
-      return;
-    }
-
-    try {
-      setAuthLoading(true);
-      setLoginMsg('Validando acesso...');
-      await signInWithEmailAndPassword(auth, cpfParaEmailInterno(loginForm.cpf), loginForm.senha);
-      setLoginMsg('');
-    } catch (error) {
-      console.error(error);
-      setLoginMsg('Não foi possível entrar. Verifique CPF e senha.');
-      setAuthLoading(false);
-    }
-  }
-
-  async function sairDoSistema() {
-    try {
-      await signOut(auth);
-      setUsuarioSistema(null);
-      setLoginForm({ cpf: '', senha: '' });
-      setLoginMsg('Sessão encerrada com sucesso.');
-    } catch (error) {
-      console.error(error);
-      setLoginMsg('Erro ao sair do sistema.');
-    }
-  }
 
   async function salvarConsentimentoLGPD() {
     if (!usuarioSistema) return;
@@ -542,7 +398,7 @@ export default function App() {
       };
 
       await setDoc(doc(db, 'usuarios', usuarioSistema.uid), payload, { merge: true });
-      setUsuarioSistema((prev) => (prev ? { ...prev, ...payload } : prev));
+      atualizarUsuarioSistema(payload);
       setLgpdConsentMsg('Aceite registrado com sucesso.');
     } catch (error) {
       console.error(error);
@@ -644,7 +500,7 @@ export default function App() {
         prioridade: problemaForm.prioridade,
         localizacao: problemaForm.localizacao || 'Não informada',
         data: new Date().toLocaleString('pt-BR'),
-        status: 'Recebido',
+        status: 'Novo',
         ...(imagemURL ? { imagem: imagemURL, nomeImagem: nomeImagemProblema || 'imagem.jpg' } : {}),
         ...(videoURL ? { video: videoURL, nomeVideo: nomeVideoProblema || 'video.mp4' } : {}),
         createdAt: serverTimestamp()
@@ -778,31 +634,7 @@ export default function App() {
   }
 
   if (!usuarioSistema) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: colors.bg, padding: 20, fontFamily: 'Arial, Helvetica, sans-serif' }}>
-        <div style={{ ...cardStyle({ width: 'min(520px, 100%)' }) }}>
-          <div style={{ textAlign: 'center', marginBottom: 22 }}>
-            <div style={{ fontSize: 28, fontWeight: 700, color: colors.text }}>MeuCampo Agricultor</div>
-            <div style={{ fontSize: 14, color: colors.muted, marginTop: 8 }}>Entre com seu CPF e sua senha para acessar seu atendimento.</div>
-          </div>
-
-          <div style={{ display: 'grid', gap: 14 }}>
-            <Input label="CPF" value={loginForm.cpf} onChange={(v) => setLoginForm((prev) => ({ ...prev, cpf: formatarCpf(v) }))} placeholder="000.000.000-00" />
-            <Input label="Senha" value={loginForm.senha} onChange={(v) => setLoginForm((prev) => ({ ...prev, senha: v }))} placeholder="Digite sua senha" type="password" />
-            <ActionButton text={authLoading ? 'Entrando...' : 'Entrar'} onClick={realizarLogin} />
-          </div>
-
-          <div style={{ marginTop: 16, background: colors.chip, borderRadius: 16, padding: 14 }}>
-            <div style={{ fontSize: 13, color: colors.muted }}>Quem pode entrar aqui</div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-              <Badge text="Agricultor" tone="success" />
-            </div>
-          </div>
-
-          {loginMsg && <div style={{ marginTop: 14, fontSize: 14, color: loginMsg.toLowerCase().includes('sucesso') ? '#166534' : '#8b1e1e' }}>{loginMsg}</div>}
-        </div>
-      </div>
-    );
+    return <Login />;
   }
 
   return (

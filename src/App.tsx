@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { addDoc, collection, doc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, onSnapshot, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
 import { db } from './firebase';
 import { AgricultorBulletinPanel } from './components/AgricultorBulletinPanel';
 import { uploadArquivo } from './services/upload';
@@ -322,11 +322,10 @@ export default function App() {
     );
 
     unsubProblemas = onSnapshot(
-      collection(db, 'problemas_agricultor'),
+      query(collection(db, 'problemas_agricultor'), where('beneficiarioId', '==', beneficiarioId)),
       (snapshot) => {
         const lista = snapshot.docs
-          .map((item) => ({ id: item.id, ...item.data() } as Problema))
-          .filter((item) => item.beneficiarioId === beneficiarioId);
+          .map((item) => ({ id: item.id, ...item.data() } as Problema));
         setProblemas(lista.sort((a, b) => String(b.data || '').localeCompare(String(a.data || ''))));
         setFirebaseStatus('online');
         setFirebaseMsg('Problemas sincronizados em tempo real com o Firestore.');
@@ -339,11 +338,10 @@ export default function App() {
     );
 
     unsubSolicitacoes = onSnapshot(
-      collection(db, 'solicitacoes_visita'),
+      query(collection(db, 'solicitacoes_visita'), where('beneficiarioId', '==', beneficiarioId)),
       (snapshot) => {
         const lista = snapshot.docs
-          .map((item) => ({ id: item.id, ...item.data() } as SolicitacaoVisita))
-          .filter((item) => item.beneficiarioId === beneficiarioId);
+          .map((item) => ({ id: item.id, ...item.data() } as SolicitacaoVisita));
         setSolicitacoes(lista.sort((a, b) => String(b.dataSolicitacao || '').localeCompare(String(a.dataSolicitacao || ''))));
         setFirebaseStatus('online');
         setFirebaseMsg('Solicitações de visita sincronizadas em tempo real com o Firestore.');
@@ -356,11 +354,10 @@ export default function App() {
     );
 
     unsubSolicitacoesWhatsapp = onSnapshot(
-      collection(db, 'solicitacoes_whatsapp'),
+      query(collection(db, 'solicitacoes_whatsapp'), where('beneficiarioId', '==', beneficiarioId)),
       (snapshot) => {
         const lista = snapshot.docs
-          .map((item) => ({ id: item.id, ...item.data() } as SolicitacaoWhatsapp))
-          .filter((item) => item.beneficiarioId === beneficiarioId);
+          .map((item) => ({ id: item.id, ...item.data() } as SolicitacaoWhatsapp));
         setSolicitacoesWhatsapp(lista.sort((a, b) => String(b.dataSolicitacao || '').localeCompare(String(a.dataSolicitacao || ''))));
       },
       (error) => {

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { addDoc, collection, doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { cpfParaEmailInterno, traduzirErroAuth } from '../utils/auth';
 
@@ -25,7 +25,6 @@ type AuthContextValue = {
   loginMsg: string;
   clearLoginMsg: () => void;
   realizarLogin: (cpf: string, senha: string) => Promise<void>;
-  solicitarResetSenha: (cpf: string) => Promise<string>;
   sairDoSistema: () => Promise<void>;
   atualizarUsuarioSistema: (patch: Partial<UsuarioAgricultor>) => void;
 };
@@ -79,19 +78,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUsuarioSistema(userData);
         setLoginMsg('');
 
-        await addDoc(collection(db, 'access_logs'), {
-          uid: userData.uid,
-          nome: userData.nome,
-          perfil: userData.perfil,
-          macroRegiaoId: userData.macroRegiaoId || null,
-          tecnicoId: null,
-          beneficiarioId: userData.beneficiarioId,
-          appOrigem: 'app-agricultor',
-          evento: 'login',
-          timestamp: serverTimestamp()
-        });
+        const tarefasPosLogin = [
+          addDoc(collection(db, 'access_logs'), {
+            uid: userData.uid,
+            nome: userData.nome,
+            perfil: userData.perfil,
+            macroRegiaoId: userData.macroRegiaoId || null,
+            tecnicoId: null,
+            beneficiarioId: userData.beneficiarioId,
+            appOrigem: 'app-agricultor',
+            evento: 'login',
+            timestamp: serverTimestamp()
+          }),
+          setDoc(doc(db, 'usuarios', userData.uid), { ultimoLoginEm: serverTimestamp() }, { merge: true })
+        ];
 
-        await setDoc(doc(db, 'usuarios', userData.uid), { ultimoLoginEm: serverTimestamp() }, { merge: true });
+        const resultados = await Promise.allSettled(tarefasPosLogin);
+        resultados.forEach((resultado) => {
+          if (resultado.status === 'rejected') {
+            console.error('Falha em tarefa auxiliar de pós-login.', resultado.reason);
+          }
+        });
       } catch (error: unknown) {
         console.error(error);
         setUsuarioSistema(null);
@@ -125,22 +132,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  async function solicitarResetSenha(cpf: string) {
-    const cpfLimpo = cpf.replace(/\D/g, '');
-
-    if (cpfLimpo.length !== 11) {
-      return 'Informe um CPF válido com 11 dígitos para recuperar a senha.';
-    }
-
-    try {
-      await sendPasswordResetEmail(auth, cpfParaEmailInterno(cpf));
-      return 'Se o CPF estiver cadastrado, você receberá um e-mail com instruções para redefinir a senha.';
-    } catch (error) {
-      console.error(error);
-      return traduzirErroAuth(error);
-    }
-  }
-
   async function sairDoSistema() {
     try {
       await signOut(auth);
@@ -163,7 +154,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loginMsg,
       clearLoginMsg: () => setLoginMsg(''),
       realizarLogin,
-      solicitarResetSenha,
       sairDoSistema,
       atualizarUsuarioSistema
     }),

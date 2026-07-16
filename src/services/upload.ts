@@ -1,8 +1,14 @@
-import { storage } from "../firebase";
+import { auth, storage } from "../firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 export async function uploadArquivo(file: File) {
-  const fileRef = ref(storage, `uploads/${Date.now()}_${file.name}`);
+  const uid = auth.currentUser?.uid;
+  if (!uid) {
+    throw new Error('Usuário não autenticado para upload.');
+  }
+
+  const sanitizedName = file.name.replace(/[^\w.-]/g, '_');
+  const fileRef = ref(storage, `uploads/${uid}/${Date.now()}_${sanitizedName}`);
 
   await uploadBytes(fileRef, file);
 

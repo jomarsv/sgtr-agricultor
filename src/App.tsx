@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { addDoc, collection, doc, getDoc, onSnapshot, serverTimestamp, setDoc } from 'firebase/firestore';
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { addDoc, collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
+import { EmailAuthProvider, onAuthStateChanged, reauthenticateWithCredential, signInWithEmailAndPassword, signOut, updatePassword } from 'firebase/auth';
 import { auth, db } from './firebase';
 import { AgricultorBulletinPanel } from './components/AgricultorBulletinPanel';
 import { uploadArquivo } from './services/upload';
@@ -285,6 +285,9 @@ export default function App() {
   const [msgProblema, setMsgProblema] = useState('');
   const [msgVisita, setMsgVisita] = useState('');
   const [msgWhatsapp, setMsgWhatsapp] = useState('');
+  const [senhaForm, setSenhaForm] = useState({ atual: '', nova: '', confirmar: '' });
+  const [senhaMsg, setSenhaMsg] = useState('');
+  const [senhaSaving, setSenhaSaving] = useState(false);
   const [lgpdConsentChecked, setLgpdConsentChecked] = useState(false);
   const [lgpdConsentSaving, setLgpdConsentSaving] = useState(false);
   const [lgpdConsentMsg, setLgpdConsentMsg] = useState('');
@@ -338,11 +341,10 @@ export default function App() {
       );
 
       unsubProblemas = onSnapshot(
-        collection(db, 'problemas_agricultor'),
+        query(collection(db, 'problemas_agricultor'), where('beneficiarioId', '==', beneficiarioId)),
         (snapshot) => {
           const lista = snapshot.docs
-            .map((item) => ({ id: item.id, ...item.data() } as Problema))
-            .filter((item) => item.beneficiarioId === beneficiarioId);
+            .map((item) => ({ id: item.id, ...item.data() } as Problema));
           setProblemas(lista.sort((a, b) => String(b.data || '').localeCompare(String(a.data || ''))));
           setFirebaseStatus('online');
           setFirebaseMsg('Problemas sincronizados em tempo real com o Firestore.');
@@ -355,11 +357,10 @@ export default function App() {
       );
 
       unsubSolicitacoes = onSnapshot(
-        collection(db, 'solicitacoes_visita'),
+        query(collection(db, 'solicitacoes_visita'), where('beneficiarioId', '==', beneficiarioId)),
         (snapshot) => {
           const lista = snapshot.docs
-            .map((item) => ({ id: item.id, ...item.data() } as SolicitacaoVisita))
-            .filter((item) => item.beneficiarioId === beneficiarioId);
+            .map((item) => ({ id: item.id, ...item.data() } as SolicitacaoVisita));
           setSolicitacoes(lista.sort((a, b) => String(b.dataSolicitacao || '').localeCompare(String(a.dataSolicitacao || ''))));
           setFirebaseStatus('online');
           setFirebaseMsg('Solicitações de visita sincronizadas em tempo real com o Firestore.');
@@ -372,11 +373,10 @@ export default function App() {
       );
 
       unsubSolicitacoesWhatsapp = onSnapshot(
-        collection(db, 'solicitacoes_whatsapp'),
+        query(collection(db, 'solicitacoes_whatsapp'), where('beneficiarioId', '==', beneficiarioId)),
         (snapshot) => {
           const lista = snapshot.docs
-            .map((item) => ({ id: item.id, ...item.data() } as SolicitacaoWhatsapp))
-            .filter((item) => item.beneficiarioId === beneficiarioId);
+            .map((item) => ({ id: item.id, ...item.data() } as SolicitacaoWhatsapp));
           setSolicitacoesWhatsapp(lista.sort((a, b) => String(b.dataSolicitacao || '').localeCompare(String(a.dataSolicitacao || ''))));
         },
         (error) => {
@@ -497,6 +497,8 @@ export default function App() {
   useEffect(() => {
     setLgpdConsentChecked(Boolean(usuarioSistema?.lgpdConsentimentoAppsMesmoControlador));
     setLgpdConsentMsg('');
+    setSenhaForm({ atual: '', nova: '', confirmar: '' });
+    setSenhaMsg('');
   }, [usuarioSistema]);
 
   async function realizarLogin() {
@@ -528,6 +530,60 @@ export default function App() {
     } catch (error) {
       console.error(error);
       setLoginMsg('Erro ao sair do sistema.');
+    }
+  }
+
+  async function alterarSenhaAgricultor() {
+    const user = auth.currentUser;
+    const email = user?.email || cpfParaEmailInterno(usuarioSistema?.cpfMasked || usuarioSistema?.cpf || '');
+
+    if (!user || !email) {
+      setSenhaMsg('Sessão inválida para alterar a senha.');
+      return;
+    }
+
+    if (!senhaForm.atual || !senhaForm.nova || !senhaForm.confirmar) {
+      setSenhaMsg('Preencha senha atual, nova senha e confirmação.');
+      return;
+    }
+
+    if (senhaForm.nova.length < 6) {
+      setSenhaMsg('A nova senha deve ter pelo menos 6 caracteres.');
+      return;
+    }
+
+    if (senhaForm.nova !== senhaForm.confirmar) {
+      setSenhaMsg('A confirmação da nova senha não confere.');
+      return;
+    }
+
+    if (senhaForm.atual === senhaForm.nova) {
+      setSenhaMsg('A nova senha deve ser diferente da senha atual.');
+      return;
+    }
+
+    try {
+      setSenhaSaving(true);
+      setSenhaMsg('Atualizando senha...');
+      const credential = EmailAuthProvider.credential(email, senhaForm.atual);
+      await reauthenticateWithCredential(user, credential);
+      await updatePassword(user, senhaForm.nova);
+      setSenhaForm({ atual: '', nova: '', confirmar: '' });
+      setSenhaMsg('Senha atualizada com sucesso.');
+    } catch (error: any) {
+      console.error(error);
+      const code = error?.code || '';
+      if (code.includes('wrong-password') || code.includes('invalid-credential') || code.includes('invalid-login-credentials')) {
+        setSenhaMsg('A senha atual informada está incorreta.');
+      } else if (code.includes('weak-password')) {
+        setSenhaMsg('A nova senha é fraca. Use uma senha mais forte.');
+      } else if (code.includes('too-many-requests')) {
+        setSenhaMsg('Muitas tentativas. Aguarde um momento e tente novamente.');
+      } else {
+        setSenhaMsg('Não foi possível atualizar a senha agora.');
+      }
+    } finally {
+      setSenhaSaving(false);
     }
   }
 
@@ -652,7 +708,7 @@ export default function App() {
         prioridade: problemaForm.prioridade,
         localizacao: problemaForm.localizacao || 'Não informada',
         data: new Date().toLocaleString('pt-BR'),
-        status: 'Recebido',
+        status: 'Novo',
         ...(imagemURL ? { imagem: imagemURL, nomeImagem: nomeImagemProblema || 'imagem.jpg' } : {}),
         ...(videoURL ? { video: videoURL, nomeVideo: nomeVideoProblema || 'video.mp4' } : {}),
         createdAt: serverTimestamp()
@@ -1161,6 +1217,26 @@ export default function App() {
                   <div style={{ fontSize: 13, color: colors.muted }}>Macro região</div>
                   <div style={{ fontSize: 18, fontWeight: 700, color: colors.text, marginTop: 8 }}>{beneficiarioVinculado?.macroRegiaoId || usuarioSistema.macroRegiaoId || '-'}</div>
                 </div>
+              </div>
+
+              <div style={{ ...cardStyle({ marginTop: 20, boxShadow: 'none', border: `1px solid ${colors.border}`, background: '#f8fcf6' }) }}>
+                <div style={{ fontSize: 20, fontWeight: 700, color: colors.text }}>Alterar senha</div>
+                <p style={{ color: colors.muted, fontSize: 14, marginTop: 10 }}>
+                  Depois do primeiro acesso com a senha provisória, troque para uma senha nova de uso pessoal.
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: 14 }}>
+                  <Input label="Senha atual" value={senhaForm.atual} onChange={(v) => setSenhaForm((prev) => ({ ...prev, atual: v }))} placeholder="Digite a senha atual" type="password" />
+                  <Input label="Nova senha" value={senhaForm.nova} onChange={(v) => setSenhaForm((prev) => ({ ...prev, nova: v }))} placeholder="Digite a nova senha" type="password" />
+                  <Input label="Confirmar nova senha" value={senhaForm.confirmar} onChange={(v) => setSenhaForm((prev) => ({ ...prev, confirmar: v }))} placeholder="Repita a nova senha" type="password" />
+                </div>
+                <div style={{ marginTop: 14, maxWidth: 260 }}>
+                  <ActionButton text={senhaSaving ? 'Atualizando senha...' : 'Atualizar senha'} onClick={alterarSenhaAgricultor} />
+                </div>
+                {senhaMsg && (
+                  <div style={{ fontSize: 14, color: senhaMsg.toLowerCase().includes('sucesso') ? '#166534' : '#8b1e1e', marginTop: 12 }}>
+                    {senhaMsg}
+                  </div>
+                )}
               </div>
 
               <div style={{ ...cardStyle({ marginTop: 20, boxShadow: 'none', border: `1px solid ${colors.border}`, background: '#f8fcf6' }) }}>

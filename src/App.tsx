@@ -63,6 +63,7 @@ type UsuarioAgricultor = {
   lgpdConsentimentoAppsMesmoControlador?: boolean;
   lgpdConsentimentoAppsMesmoControladorEm?: any;
   lgpdConsentimentoAppsMesmoControladorVersao?: string;
+  primeiroAcesso?: boolean;
   ativo: boolean;
   ultimoLoginEm?: any;
 };
@@ -315,6 +316,8 @@ export default function App() {
   const videoGalleryInputRef = useRef<HTMLInputElement | null>(null);
 
   const isMobile = typeof window !== 'undefined' ? window.innerWidth < 960 : false;
+  const precisaTrocarSenha = Boolean(usuarioSistema?.primeiroAcesso);
+  const telaEfetiva = precisaTrocarSenha && active !== 'privacidade' ? 'perfil' : active;
 
   useEffect(() => {
     let unsubProblemas: (() => void) | undefined;
@@ -501,6 +504,12 @@ export default function App() {
     setSenhaMsg('');
   }, [usuarioSistema]);
 
+  useEffect(() => {
+    if (usuarioSistema?.primeiroAcesso) {
+      setActive('perfil');
+    }
+  }, [usuarioSistema?.primeiroAcesso]);
+
   async function realizarLogin() {
     const cpfLimpo = loginForm.cpf.replace(/\D/g, '');
 
@@ -568,6 +577,12 @@ export default function App() {
       const credential = EmailAuthProvider.credential(email, senhaForm.atual);
       await reauthenticateWithCredential(user, credential);
       await updatePassword(user, senhaForm.nova);
+      try {
+        await setDoc(doc(db, 'usuarios', user.uid), { primeiroAcesso: false }, { merge: true });
+      } catch (error) {
+        console.error('Falha ao marcar primeiroAcesso como concluído.', error);
+      }
+      setUsuarioSistema((prev) => (prev ? { ...prev, primeiroAcesso: false } : prev));
       setSenhaForm({ atual: '', nova: '', confirmar: '' });
       setSenhaMsg('Senha atualizada com sucesso.');
     } catch (error: any) {
@@ -905,6 +920,15 @@ export default function App() {
             <div style={{ fontSize: 12, color: '#d7e4d4', marginTop: 10 }}>{mensagemStatusCadastro}</div>
           </div>
 
+          {precisaTrocarSenha && (
+            <div style={{ background: '#f2e7c1', color: '#5e3d08', borderRadius: 22, padding: 16, marginBottom: 18 }}>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>Primeiro acesso</div>
+              <div style={{ fontSize: 13, marginTop: 8 }}>
+                Troque a senha provisória em <strong>Meu perfil</strong> antes de usar os demais módulos.
+              </div>
+            </div>
+          )}
+
           <div style={{ display: 'grid', gap: 8 }}>
             {[
               ['inicio', 'Início'],
@@ -916,12 +940,16 @@ export default function App() {
               ['perfil', 'Meu perfil'],
               ['privacidade', 'Privacidade']
             ].map(([key, label]) => {
-              const selected = active === key;
+              const selected = telaEfetiva === key;
+              const bloqueadoPrimeiroAcesso = precisaTrocarSenha && key !== 'perfil' && key !== 'privacidade';
               return (
                 <button
                   key={key}
-                  onClick={() => setActive(key as TelaKey)}
-                  style={{ textAlign: 'left', padding: '14px 16px', borderRadius: 16, border: 'none', cursor: 'pointer', fontWeight: 700, background: selected ? '#ffffff' : 'transparent', color: selected ? colors.primaryDark : '#e2f0e0' }}
+                  onClick={() => {
+                    if (bloqueadoPrimeiroAcesso) return;
+                    setActive(key as TelaKey);
+                  }}
+                  style={{ textAlign: 'left', padding: '14px 16px', borderRadius: 16, border: 'none', cursor: bloqueadoPrimeiroAcesso ? 'not-allowed' : 'pointer', fontWeight: 700, background: selected ? '#ffffff' : 'transparent', color: selected ? colors.primaryDark : '#e2f0e0', opacity: bloqueadoPrimeiroAcesso ? 0.55 : 1 }}
                 >
                   {label}
                 </button>
@@ -982,13 +1010,13 @@ export default function App() {
             </div>
           )}
 
-          {active === 'boletim' && (
+          {telaEfetiva === 'boletim' && (
             <div style={cardStyle()}>
               <AgricultorBulletinPanel />
             </div>
           )}
 
-          {active === 'inicio' && (
+          {telaEfetiva === 'inicio' && (
             <div style={cardStyle()}>
               <h2 style={{ marginTop: 0, color: colors.text }}>Início</h2>
               <p style={{ color: colors.muted, fontSize: 14 }}>Acompanhe o andamento do seu cadastro e use este canal para se comunicar com a equipe técnica.</p>
@@ -1009,7 +1037,7 @@ export default function App() {
             </div>
           )}
 
-          {active === 'visitas' && (
+          {telaEfetiva === 'visitas' && (
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 0.95fr', gap: 20 }}>
               <div style={cardStyle()}>
                 <h2 style={{ margin: 0, fontSize: 28, color: colors.text }}>Solicitar visita técnica</h2>
@@ -1093,7 +1121,7 @@ export default function App() {
             </div>
           )}
 
-          {active === 'problemas' && (
+          {telaEfetiva === 'problemas' && (
             <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 0.95fr', gap: 20 }}>
               <div style={cardStyle()}>
                 <h2 style={{ margin: 0, fontSize: 28, color: colors.text }}>Relatar problema</h2>
@@ -1168,7 +1196,7 @@ export default function App() {
             </div>
           )}
 
-          {active === 'status' && (
+          {telaEfetiva === 'status' && (
             <div style={cardStyle()}>
               <h2 style={{ marginTop: 0, color: colors.text }}>Acompanhamento do cadastro</h2>
               <div style={{ display: 'grid', gap: 14 }}>
@@ -1193,7 +1221,7 @@ export default function App() {
             </div>
           )}
 
-          {active === 'perfil' && (
+          {telaEfetiva === 'perfil' && (
             <div style={cardStyle()}>
               <h2 style={{ marginTop: 0, color: colors.text }}>Meu perfil</h2>
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
@@ -1268,7 +1296,7 @@ export default function App() {
             </div>
           )}
 
-          {active === 'privacidade' && (
+          {telaEfetiva === 'privacidade' && (
             <div style={cardStyle()}>
               <h2 style={{ marginTop: 0, color: colors.text }}>Política resumida de privacidade</h2>
               <p style={{ color: colors.muted, fontSize: 14 }}>
@@ -1313,7 +1341,7 @@ export default function App() {
             </div>
           )}
 
-          {active === 'locktec' && (
+          {telaEfetiva === 'locktec' && (
             <div style={cardStyle()}>
               <h2 style={{ marginTop: 0, color: colors.text }}>LockTec</h2>
               <p style={{ color: colors.muted, fontSize: 14 }}>Área reservada para evoluções futuras. O acesso do agricultor continua controlado pelo usuário autenticado e pelo status do beneficiário vinculado.</p>

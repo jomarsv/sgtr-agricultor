@@ -96,6 +96,7 @@ service cloud.firestore {
           'cpfMasked',
           'cargo',
           'instituicao',
+          'primeiroAcesso',
           'lgpdConsentimentoAppsMesmoControlador',
           'lgpdConsentimentoAppsMesmoControladorEm',
           'lgpdConsentimentoAppsMesmoControladorVersao',

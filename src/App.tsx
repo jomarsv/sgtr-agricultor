@@ -447,19 +447,27 @@ export default function App() {
         setFirebaseStatus('conectando');
         setFirebaseMsg('Conectado. Iniciando sincronização em tempo real...');
 
-        await addDoc(collection(db, 'access_logs'), {
-          uid: userData.uid,
-          nome: userData.nome,
-          perfil: userData.perfil,
-          macroRegiaoId: userData.macroRegiaoId || null,
-          tecnicoId: null,
-          beneficiarioId: userData.beneficiarioId,
-          appOrigem: 'app-agricultor',
-          evento: 'login',
-          timestamp: serverTimestamp()
-        });
+        try {
+          await addDoc(collection(db, 'access_logs'), {
+            uid: userData.uid,
+            nome: userData.nome,
+            perfil: userData.perfil,
+            macroRegiaoId: userData.macroRegiaoId || null,
+            tecnicoId: null,
+            beneficiarioId: userData.beneficiarioId,
+            appOrigem: 'app-agricultor',
+            evento: 'login',
+            timestamp: serverTimestamp()
+          });
+        } catch (error) {
+          console.error('Falha ao registrar access log de login.', error);
+        }
 
-        await setDoc(doc(db, 'usuarios', userData.uid), { ultimoLoginEm: serverTimestamp() }, { merge: true });
+        try {
+          await setDoc(doc(db, 'usuarios', userData.uid), { ultimoLoginEm: serverTimestamp() }, { merge: true });
+        } catch (error) {
+          console.error('Falha ao atualizar ultimoLoginEm.', error);
+        }
 
         startRealtime(userData.beneficiarioId);
         setLoginMsg('');

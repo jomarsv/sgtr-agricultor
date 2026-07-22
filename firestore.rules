@@ -369,9 +369,12 @@ service cloud.firestore {
     }
 
     match /usuarios/{userId} {
-      allow read: if myActive() && (
-        request.auth.uid == userId
-        || isGestao()
+      // O próprio agricultor precisa ler seu documento logo após autenticar,
+      // antes de o app concluir as validações de perfil e vínculo.
+      allow get: if signedIn() && request.auth.uid == userId;
+
+      allow list: if myActive() && (
+        isGestao()
         || isSupervisor()
         || isAdministrativo()
       );

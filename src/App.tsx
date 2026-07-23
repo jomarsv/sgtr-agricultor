@@ -251,7 +251,7 @@ function descricaoStatusCadastro(status?: BeneficiarioVinculado['statusCadastro'
 }
 
 function bloquearInteracaoAgricultor(status?: BeneficiarioVinculado['statusCadastro']) {
-  return status === 'rejeitado' || status === 'inativo' || status === 'aguardando_correcao';
+  return status !== 'aprovado';
 }
 
 function traduzirErroFirestore(error: any) {

@@ -634,6 +634,16 @@ export default function App() {
   function handleImagemProblema(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setMsgProblema('Selecione um arquivo de imagem válido.');
+      event.target.value = '';
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setMsgProblema('A imagem deve ter no máximo 10 MB.');
+      event.target.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       const result = typeof reader.result === 'string' ? reader.result : '';
@@ -651,6 +661,16 @@ export default function App() {
   function handleVideoProblema(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (!file.type.startsWith('video/')) {
+      setMsgProblema('Selecione um arquivo de vídeo válido.');
+      event.target.value = '';
+      return;
+    }
+    if (file.size > 30 * 1024 * 1024) {
+      setMsgProblema('O vídeo deve ter no máximo 30 MB.');
+      event.target.value = '';
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       const result = typeof reader.result === 'string' ? reader.result : '';
@@ -702,13 +722,13 @@ export default function App() {
 
       if (imagemProblema) {
         const blob = await fetch(imagemProblema).then((r) => r.blob());
-        const file = new File([blob], nomeImagemProblema || 'imagem.jpg');
+        const file = new File([blob], nomeImagemProblema || 'imagem.jpg', { type: blob.type || 'image/jpeg' });
         imagemURL = await uploadArquivo(file);
       }
 
       if (videoProblema) {
         const blob = await fetch(videoProblema).then((r) => r.blob());
-        const file = new File([blob], nomeVideoProblema || 'video.mp4');
+        const file = new File([blob], nomeVideoProblema || 'video.mp4', { type: blob.type || 'video/mp4' });
         videoURL = await uploadArquivo(file);
       }
 
@@ -716,7 +736,7 @@ export default function App() {
         beneficiarioId: usuarioSistema.beneficiarioId,
         beneficiarioNome: usuarioSistema.nome,
         uidCriador: usuarioSistema.uid,
-        macroRegiaoId: beneficiarioVinculado?.macroRegiaoId || usuarioSistema.macroRegiaoId || '',
+        macroRegiaoId: usuarioSistema.macroRegiaoId || beneficiarioVinculado?.macroRegiaoId || '',
         titulo: problemaForm.titulo,
         categoria: problemaForm.categoria,
         descricao: problemaForm.descricao || 'Relato enviado por mídia anexada.',
@@ -735,7 +755,15 @@ export default function App() {
       setMsgProblema('Problema enviado com sucesso ao Firestore.');
     } catch (error) {
       console.error(error);
-      setMsgProblema('Erro ao enviar problema para o Firebase.');
+      const codigo = typeof error === 'object' && error && 'code' in error ? String((error as { code?: unknown }).code || '') : '';
+      const detalhe = error instanceof Error ? error.message : '';
+      if (codigo.includes('storage/unauthorized')) {
+        setMsgProblema('O Firebase recusou o envio da mídia por permissão. Atualize a página e tente novamente.');
+      } else if (codigo.includes('permission-denied')) {
+        setMsgProblema('O Firestore recusou o problema por permissão. Verifique o vínculo e a macrorregião do cadastro.');
+      } else {
+        setMsgProblema(detalhe ? `Erro ao enviar problema: ${detalhe}` : 'Erro ao enviar problema para o Firebase.');
+      }
     }
   }
 

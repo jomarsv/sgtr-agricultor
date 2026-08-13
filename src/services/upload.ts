@@ -12,6 +12,10 @@ function nomeSeguro(nome: string) {
     .slice(-120);
 }
 
+function esperar(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 export async function uploadArquivo(file: File, problemaId: string) {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error('Usuário não autenticado para enviar o arquivo.');
@@ -25,7 +29,22 @@ export async function uploadArquivo(file: File, problemaId: string) {
   if (!problemaId) throw new Error('O problema precisa ser registrado antes do envio da mídia.');
   const fileRef = ref(storage, `problemas_agricultor/${uid}/${problemaId}/${Date.now()}_${nomeSeguro(file.name)}`);
 
-  await uploadBytes(fileRef, file, { contentType: file.type });
+  const intervalos = [0, 1000, 2500, 5000];
+  let ultimoErro: unknown;
+
+  for (const intervalo of intervalos) {
+    if (intervalo) await esperar(intervalo);
+    try {
+      await uploadBytes(fileRef, file, { contentType: file.type });
+      ultimoErro = undefined;
+      break;
+    } catch (error: any) {
+      ultimoErro = error;
+      if (!String(error?.code || '').includes('storage/unauthorized')) throw error;
+    }
+  }
+
+  if (ultimoErro) throw ultimoErro;
 
   const url = await getDownloadURL(fileRef);
 

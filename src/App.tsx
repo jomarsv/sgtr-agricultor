@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { addDoc, collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { EmailAuthProvider, onAuthStateChanged, reauthenticateWithCredential, signInWithEmailAndPassword, signOut, updatePassword } from 'firebase/auth';
 import { auth, db } from './firebase';
 import { AgricultorBulletinPanel } from './components/AgricultorBulletinPanel';
@@ -64,6 +64,7 @@ type UsuarioAgricultor = {
   lgpdConsentimentoAppsMesmoControladorEm?: any;
   lgpdConsentimentoAppsMesmoControladorVersao?: string;
   primeiroAcesso?: boolean;
+  telefone?: string;
   ativo: boolean;
   ultimoLoginEm?: any;
 };
@@ -289,6 +290,9 @@ export default function App() {
   const [senhaForm, setSenhaForm] = useState({ atual: '', nova: '', confirmar: '' });
   const [senhaMsg, setSenhaMsg] = useState('');
   const [senhaSaving, setSenhaSaving] = useState(false);
+  const [telefonePerfil, setTelefonePerfil] = useState('');
+  const [telefoneSaving, setTelefoneSaving] = useState(false);
+  const [telefoneMsg, setTelefoneMsg] = useState('');
   const [lgpdConsentChecked, setLgpdConsentChecked] = useState(false);
   const [lgpdConsentSaving, setLgpdConsentSaving] = useState(false);
   const [lgpdConsentMsg, setLgpdConsentMsg] = useState('');
@@ -318,6 +322,10 @@ export default function App() {
   const isMobile = typeof window !== 'undefined' ? window.innerWidth < 960 : false;
   const precisaTrocarSenha = Boolean(usuarioSistema?.primeiroAcesso);
   const telaEfetiva = precisaTrocarSenha && active !== 'privacidade' ? 'perfil' : active;
+
+  useEffect(() => {
+    setTelefonePerfil(beneficiarioVinculado?.telefone || usuarioSistema?.telefone || '');
+  }, [beneficiarioVinculado?.telefone, usuarioSistema?.telefone]);
 
   useEffect(() => {
     let unsubProblemas: (() => void) | undefined;
@@ -578,9 +586,11 @@ export default function App() {
       await reauthenticateWithCredential(user, credential);
       await updatePassword(user, senhaForm.nova);
       try {
-        await setDoc(doc(db, 'usuarios', user.uid), { primeiroAcesso: false }, { merge: true });
+        await updateDoc(doc(db, 'usuarios', user.uid), { primeiroAcesso: false });
       } catch (error) {
         console.error('Falha ao marcar primeiroAcesso como concluído.', error);
+        setSenhaMsg('A senha foi alterada, mas não foi possível concluir o primeiro acesso. Entre com a nova senha e tente novamente.');
+        return;
       }
       setUsuarioSistema((prev) => (prev ? { ...prev, primeiroAcesso: false } : prev));
       setSenhaForm({ atual: '', nova: '', confirmar: '' });
@@ -825,6 +835,40 @@ export default function App() {
         return;
       }
       setMsgVisita(traduzirErroFirestore(error));
+    }
+  }
+
+  async function salvarTelefonePerfil() {
+    const user = auth.currentUser;
+    const beneficiarioId = usuarioSistema?.beneficiarioId;
+    const telefone = telefonePerfil.trim();
+    const digitos = telefone.replace(/\D/g, '');
+
+    if (!user || !beneficiarioId) {
+      setTelefoneMsg('Cadastro vinculado não encontrado para atualizar o celular.');
+      return;
+    }
+
+    if (digitos.length < 10 || digitos.length > 11) {
+      setTelefoneMsg('Informe um celular com DDD e 10 ou 11 dígitos.');
+      return;
+    }
+
+    try {
+      setTelefoneSaving(true);
+      setTelefoneMsg('Salvando celular...');
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'usuarios', user.uid), { telefone });
+      batch.update(doc(db, 'beneficiarios', beneficiarioId), { telefone });
+      await batch.commit();
+      setUsuarioSistema((prev) => (prev ? { ...prev, telefone } : prev));
+      setBeneficiarioVinculado((prev) => (prev ? { ...prev, telefone } : prev));
+      setTelefoneMsg('Celular atualizado com sucesso.');
+    } catch (error) {
+      console.error(error);
+      setTelefoneMsg('Não foi possível atualizar o celular. Verifique a conexão e tente novamente.');
+    } finally {
+      setTelefoneSaving(false);
     }
   }
 
@@ -1270,19 +1314,33 @@ export default function App() {
                   <div style={{ fontSize: 18, fontWeight: 700, color: colors.text, marginTop: 8 }}>{cpfParaEmailInterno(usuarioSistema.cpfMasked || usuarioSistema.cpf || '')}</div>
                 </div>
                 <div style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
-                  <div style={{ fontSize: 13, color: colors.muted }}>Celular cadastrado</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: colors.text, marginTop: 8 }}>{beneficiarioVinculado?.telefone || 'Não informado no cadastro técnico'}</div>
-                </div>
-                <div style={{ background: colors.chip, borderRadius: 18, padding: 16 }}>
                   <div style={{ fontSize: 13, color: colors.muted }}>Macro região</div>
                   <div style={{ fontSize: 18, fontWeight: 700, color: colors.text, marginTop: 8 }}>{beneficiarioVinculado?.macroRegiaoId || usuarioSistema.macroRegiaoId || '-'}</div>
                 </div>
               </div>
 
               <div style={{ ...cardStyle({ marginTop: 20, boxShadow: 'none', border: `1px solid ${colors.border}`, background: '#f8fcf6' }) }}>
+                <div style={{ fontSize: 20, fontWeight: 700, color: colors.text }}>Celular para contato</div>
+                <p style={{ color: colors.muted, fontSize: 14, marginTop: 10 }}>
+                  Este número será usado nos pedidos de interação via WhatsApp e também ficará disponível para a equipe técnica.
+                </p>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 260px', gap: 14, alignItems: 'end' }}>
+                  <Input label="Celular com DDD" value={telefonePerfil} onChange={setTelefonePerfil} placeholder="Ex.: (98) 99999-9999" />
+                  <ActionButton text={telefoneSaving ? 'Salvando...' : 'Atualizar celular'} onClick={salvarTelefonePerfil} />
+                </div>
+                {telefoneMsg && (
+                  <div style={{ fontSize: 14, color: telefoneMsg.toLowerCase().includes('sucesso') ? '#166534' : '#8b1e1e', marginTop: 12 }}>
+                    {telefoneMsg}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ ...cardStyle({ marginTop: 20, boxShadow: 'none', border: `1px solid ${colors.border}`, background: '#f8fcf6' }) }}>
                 <div style={{ fontSize: 20, fontWeight: 700, color: colors.text }}>Alterar senha</div>
                 <p style={{ color: colors.muted, fontSize: 14, marginTop: 10 }}>
-                  Depois do primeiro acesso com a senha provisória, troque para uma senha nova de uso pessoal.
+                  {precisaTrocarSenha
+                    ? 'No primeiro acesso, troque a senha provisória para liberar os demais módulos.'
+                    : 'Use esta opção somente quando quiser trocar sua senha pessoal.'}
                 </p>
                 <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: 14 }}>
                   <Input label="Senha atual" value={senhaForm.atual} onChange={(v) => setSenhaForm((prev) => ({ ...prev, atual: v }))} placeholder="Digite a senha atual" type="password" />

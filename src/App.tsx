@@ -85,6 +85,21 @@ type BeneficiarioVinculado = {
 const JARILO_URL = 'https://www.jarilo.com.br/questions/question/3d1a5e16-c489-4819-925e-89e45c32425c/details';
 const LGPD_CONSENTIMENTO_VERSAO = '2026-04-08-oferta-demanda';
 const BRAZIL_TIME_ZONE = 'America/Fortaleza';
+const CATEGORIAS_PROBLEMA = [
+  'Irrigação',
+  'Pragas',
+  'Doenças',
+  'Solo',
+  'Plantio',
+  'Adubação',
+  'Colheita',
+  'Clima',
+  'Criação animal',
+  'Comercialização',
+  'Infraestrutura',
+  'Outro'
+];
+const PRIORIDADES_PROBLEMA = ['Baixa', 'Média', 'Alta', 'Crítica'];
 
 const colors = {
   bg: '#eef4ea',
@@ -168,6 +183,21 @@ function Input({ label, value, onChange, placeholder, type = 'text', min }: { la
         style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${colors.border}`, borderRadius: 16, padding: '14px 16px', fontSize: 14, background: '#fff', color: colors.text, outline: 'none' }}
       />
     </div>
+  );
+}
+
+function SelectField({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (v: string) => void }) {
+  return (
+    <label>
+      <div style={{ fontSize: 13, fontWeight: 700, color: colors.muted, marginBottom: 6 }}>{label}</div>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${colors.border}`, borderRadius: 16, padding: '14px 16px', fontSize: 14, background: '#fff', color: colors.text, outline: 'none', cursor: 'pointer' }}
+      >
+        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+      </select>
+    </label>
   );
 }
 
@@ -1205,8 +1235,18 @@ export default function App() {
                 <div style={{ display: 'grid', gap: 16, marginTop: 22 }}>
                   {bloqueioOperacional && <div style={{ color: '#8a5a1d', fontSize: 14, background: '#f2e7c1', borderRadius: 16, padding: 14 }}>{mensagemStatusCadastro}</div>}
                   <Input label="Título" value={problemaForm.titulo} onChange={(v) => setProblemaForm((p) => ({ ...p, titulo: v }))} placeholder="Ex.: baixa pressão na irrigação" />
-                  <Input label="Categoria" value={problemaForm.categoria} onChange={(v) => setProblemaForm((p) => ({ ...p, categoria: v }))} placeholder="Irrigação, praga, solo..." />
-                  <Input label="Prioridade" value={problemaForm.prioridade} onChange={(v) => setProblemaForm((p) => ({ ...p, prioridade: v }))} placeholder="Alta, Média, Baixa" />
+                  <SelectField
+                    label="Categoria"
+                    value={problemaForm.categoria}
+                    options={CATEGORIAS_PROBLEMA}
+                    onChange={(v) => setProblemaForm((p) => ({ ...p, categoria: v }))}
+                  />
+                  <SelectField
+                    label="Prioridade"
+                    value={problemaForm.prioridade}
+                    options={PRIORIDADES_PROBLEMA}
+                    onChange={(v) => setProblemaForm((p) => ({ ...p, prioridade: v }))}
+                  />
                   <Input label="Localização" value={problemaForm.localizacao} onChange={(v) => setProblemaForm((p) => ({ ...p, localizacao: v }))} placeholder="Ex.: setor da horta" />
                   <Area label="Descrição ou relato opcional" value={problemaForm.descricao} onChange={(v) => setProblemaForm((p) => ({ ...p, descricao: v }))} placeholder="Se preferir, escreva aqui. Também pode enviar imagem ou gravar vídeo." />
 

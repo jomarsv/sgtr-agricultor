@@ -260,6 +260,18 @@ service cloud.firestore {
         && validClientTimestamp(request.resource.data.createdAt);
     }
 
+    function validProblemaAgricultorMediaUpdate() {
+      return isAgricultor()
+        && resource.data.uidCriador == request.auth.uid
+        && resource.data.beneficiarioId == myBeneficiarioId()
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          'imagem',
+          'nomeImagem',
+          'video',
+          'nomeVideo'
+        ]);
+    }
+
     function validSolicitacaoVisitaCreate() {
       return request.resource.data.uidCriador == request.auth.uid
         && request.resource.data.beneficiarioId == myBeneficiarioId()
@@ -506,7 +518,8 @@ service cloud.firestore {
         && validProblemaAgricultorCreate();
 
       allow update: if myActive() && (
-        isGestao()
+        validProblemaAgricultorMediaUpdate()
+        || isGestao()
         || isSupervisor()
         || isAdministrativo()
         || (

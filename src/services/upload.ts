@@ -12,7 +12,7 @@ function nomeSeguro(nome: string) {
     .slice(-120);
 }
 
-export async function uploadArquivo(file: File) {
+export async function uploadArquivo(file: File, problemaId: string) {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error('Usuário não autenticado para enviar o arquivo.');
 
@@ -22,7 +22,8 @@ export async function uploadArquivo(file: File) {
   if (isImage && file.size > MAX_IMAGE_SIZE) throw new Error('A imagem deve ter no máximo 10 MB.');
   if (isVideo && file.size > MAX_VIDEO_SIZE) throw new Error('O vídeo deve ter no máximo 30 MB.');
 
-  const fileRef = ref(storage, `problemas_agricultor/${uid}/${Date.now()}_${nomeSeguro(file.name)}`);
+  if (!problemaId) throw new Error('O problema precisa ser registrado antes do envio da mídia.');
+  const fileRef = ref(storage, `problemas_agricultor/${uid}/${problemaId}/${Date.now()}_${nomeSeguro(file.name)}`);
 
   await uploadBytes(fileRef, file, { contentType: file.type });
 

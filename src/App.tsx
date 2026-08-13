@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { addDoc, collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, where } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore';
 import { EmailAuthProvider, onAuthStateChanged, reauthenticateWithCredential, signInWithEmailAndPassword, signOut, updatePassword } from 'firebase/auth';
 import { auth, db } from './firebase';
 import { AgricultorBulletinPanel } from './components/AgricultorBulletinPanel';
@@ -717,22 +717,8 @@ export default function App() {
     }
 
     try {
-      let imagemURL = '';
-      let videoURL = '';
-
-      if (imagemProblema) {
-        const blob = await fetch(imagemProblema).then((r) => r.blob());
-        const file = new File([blob], nomeImagemProblema || 'imagem.jpg', { type: blob.type || 'image/jpeg' });
-        imagemURL = await uploadArquivo(file);
-      }
-
-      if (videoProblema) {
-        const blob = await fetch(videoProblema).then((r) => r.blob());
-        const file = new File([blob], nomeVideoProblema || 'video.mp4', { type: blob.type || 'video/mp4' });
-        videoURL = await uploadArquivo(file);
-      }
-
-      await addDoc(collection(db, 'problemas_agricultor'), {
+      const problemaRef = doc(collection(db, 'problemas_agricultor'));
+      await setDoc(problemaRef, {
         beneficiarioId: usuarioSistema.beneficiarioId,
         beneficiarioNome: usuarioSistema.nome,
         uidCriador: usuarioSistema.uid,
@@ -744,9 +730,27 @@ export default function App() {
         localizacao: problemaForm.localizacao || 'Não informada',
         data: new Date().toLocaleString('pt-BR'),
         status: 'Novo',
-        ...(imagemURL ? { imagem: imagemURL, nomeImagem: nomeImagemProblema || 'imagem.jpg' } : {}),
-        ...(videoURL ? { video: videoURL, nomeVideo: nomeVideoProblema || 'video.mp4' } : {}),
         createdAt: serverTimestamp()
+      });
+
+      let imagemURL = '';
+      let videoURL = '';
+
+      if (imagemProblema) {
+        const blob = await fetch(imagemProblema).then((r) => r.blob());
+        const file = new File([blob], nomeImagemProblema || 'imagem.jpg', { type: blob.type || 'image/jpeg' });
+        imagemURL = await uploadArquivo(file, problemaRef.id);
+      }
+
+      if (videoProblema) {
+        const blob = await fetch(videoProblema).then((r) => r.blob());
+        const file = new File([blob], nomeVideoProblema || 'video.mp4', { type: blob.type || 'video/mp4' });
+        videoURL = await uploadArquivo(file, problemaRef.id);
+      }
+
+      if (imagemURL || videoURL) await updateDoc(problemaRef, {
+        ...(imagemURL ? { imagem: imagemURL, nomeImagem: nomeImagemProblema || 'imagem.jpg' } : {}),
+        ...(videoURL ? { video: videoURL, nomeVideo: nomeVideoProblema || 'video.mp4' } : {})
       });
 
       setProblemaForm({ titulo: '', categoria: 'Irrigação', descricao: '', prioridade: 'Média', localizacao: '' });

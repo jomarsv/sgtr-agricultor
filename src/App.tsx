@@ -1252,7 +1252,16 @@ export default function App() {
 
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: colors.muted, marginBottom: 6 }}>Imagem do problema</div>
-                    <input type="file" accept="image/*" onChange={handleImagemProblema} style={{ width: '100%', boxSizing: 'border-box', border: `1px solid ${colors.border}`, borderRadius: 14, padding: '10px 12px', fontSize: 14, background: '#fff', color: colors.text }} />
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 8 }}>
+                      <label style={{ display: 'block', padding: '11px 14px', borderRadius: 12, background: colors.chip, color: colors.primaryDark, fontWeight: 700, textAlign: 'center', cursor: 'pointer' }}>
+                        Escolher imagem salva
+                        <input type="file" accept="image/*" onChange={handleImagemProblema} style={{ display: 'none' }} />
+                      </label>
+                      <label style={{ display: 'block', padding: '11px 14px', borderRadius: 12, background: colors.primaryDark, color: '#fff', fontWeight: 700, textAlign: 'center', cursor: 'pointer' }}>
+                        Capturar imagem pela câmera
+                        <input type="file" accept="image/*" capture="environment" onChange={handleImagemProblema} style={{ display: 'none' }} />
+                      </label>
+                    </div>
                     {nomeImagemProblema && (
                       <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
                         <div style={{ fontSize: 13, color: colors.muted }}>Imagem selecionada: {nomeImagemProblema}</div>

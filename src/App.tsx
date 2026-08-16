@@ -1257,7 +1257,7 @@ export default function App() {
                       <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
                         <div style={{ fontSize: 13, color: colors.muted }}>Imagem selecionada: {nomeImagemProblema}</div>
                         <ProblemImage src={imagemProblema} fileName={nomeImagemProblema} />
-                        <ActionButton text="Remover imagem" onClick={removerImagemProblema} secondary />
+                        <ActionButton text="Excluir imagem carregada" onClick={() => { if (window.confirm('Excluir a imagem carregada deste relato?')) removerImagemProblema(); }} secondary />
                       </div>
                     )}
                   </div>
